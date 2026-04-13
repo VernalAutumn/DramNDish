@@ -28,6 +28,13 @@ interface Comment {
   created_at: string
 }
 
+interface PlacePhoto {
+  id: string
+  url: string
+  nickname: string
+  created_at: string
+}
+
 const TYPE_LABEL: Record<string, string> = {
   whisky:     '리쿼샵',
   bar:        '바',
@@ -69,6 +76,10 @@ export default function PlaceDetailClient({
   const [newTagLabel,  setNewTagLabel]  = useState('')
   const [isAddingTag,  setIsAddingTag]  = useState(false)
   const tagInputRef = useRef<HTMLInputElement>(null)
+
+  // 사진
+  const [photos,      setPhotos]      = useState<PlacePhoto[]>([])
+  const [isUploading, setIsUploading] = useState(false)
 
   // 코멘트
   const [comments,       setComments]       = useState<Comment[]>([])
@@ -238,6 +249,54 @@ export default function PlaceDetailClient({
       }
     } finally {
       setIsAddingTag(false)
+    }
+  }
+
+  // ─── 사진 목록 불러오기 ──────────────────────────────────────────────────
+  const fetchPhotos = async () => {
+    try {
+      const res = await fetch(`/api/places/${place.id}/photos`)
+      if (res.ok) {
+        const data = await res.json()
+        setPhotos(data)
+      }
+    } catch (error) {
+      console.error('사진 로딩 실패:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchPhotos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.id])
+
+  // ─── 사진 업로드 핸들러 ──────────────────────────────────────────────────
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const nicknameInput = prompt('업로더 닉네임을 입력해주세요 (빈칸 시 익명)') || '익명'
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('nickname', nicknameInput)
+
+    setIsUploading(true)
+    try {
+      const res = await fetch(`/api/places/${place.id}/photos`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) throw new Error('업로드 실패')
+
+      const newPhoto = await res.json()
+      setPhotos((prev) => [newPhoto, ...prev])
+      alert('사진이 성공적으로 추가되었습니다!')
+    } catch (error) {
+      console.error(error)
+      alert('사진 업로드 중 오류가 발생했습니다.')
+    } finally {
+      setIsUploading(false)
+      e.target.value = ''
     }
   }
 
@@ -544,18 +603,56 @@ export default function PlaceDetailClient({
         {/* ── 사진 ──────────────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <SectionTitle>사진</SectionTitle>
-          <button
-            onClick={() => alert('사진 업로드 기능은 준비 중입니다.')}
-            className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-[#BF3A21] hover:text-[#BF3A21] transition-colors group"
+
+          {/* 업로드 버튼 */}
+          <input
+            type="file"
+            id="photo-upload"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePhotoUpload}
+            disabled={isUploading}
+          />
+          <label
+            htmlFor="photo-upload"
+            className={`w-full h-20 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-1 transition-colors group cursor-pointer ${
+              isUploading
+                ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                : 'border-gray-200 text-gray-400 hover:border-[#BF3A21] hover:text-[#BF3A21]'
+            }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-              className="group-hover:stroke-[#BF3A21] transition-colors">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
-            <span className="text-xs font-medium">사진 추가</span>
-          </button>
+            {isUploading ? (
+              <span className="text-xs font-medium">업로드 중...</span>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+                  className="group-hover:stroke-[#BF3A21] transition-colors">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span className="text-xs font-medium">📸 사진 추가</span>
+              </>
+            )}
+          </label>
+
+          {/* 사진 갤러리 그리드 */}
+          {photos.length > 0 && (
+            <div className="mt-4 grid grid-cols-3 gap-1.5">
+              {photos.map((photo) => (
+                <div key={photo.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
+                  <img
+                    src={photo.url}
+                    alt={`${photo.nickname}님의 사진`}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent">
+                    <p className="text-[10px] text-white font-medium truncate">{photo.nickname}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── 코멘트 ────────────────────────────────────────────────── */}
