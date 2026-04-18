@@ -1,26 +1,204 @@
 @import "tailwindcss";
 
+/* ─── Pretendard ──────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.woff2')
+       format('woff2-variations');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* ─── Design Tokens ──────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand */
+  --color-brand-primary:  #BF3A21;
+  --color-brand-hover:    #D4573A;
+  --color-brand-dark:     #7D2214;
+  --color-brand-surface:  #FDF0EC;
+  --color-brand-border:   #EFCFC5;
+
+  /* Surface */
+  --color-surface-base:       #FFFFFF;
+  --color-surface-secondary:  #F7F5F3;
+  --color-surface-tertiary:   #EEEAE6;
+
+  /* Text */
+  --color-text-primary:   #1C1412;
+  --color-text-secondary: #4A4440;
+  --color-text-tertiary:  #767067;
+  --color-text-disabled:  #B0AAA4;
+
+  /* Border */
+  --color-border-default: #E8E4E0;
+  --color-border-strong:  #C4BEB8;
+
+  /* Semantic */
+  --color-semantic-success: #2E7D52;
+  --color-semantic-neutral: #6B6560;
+  --color-semantic-info:    #1D6FAF;
 }
 
+/* ─── Tailwind v4 Theme Registration ─────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Font */
+  --font-sans: 'Pretendard', system-ui, -apple-system, sans-serif;
+
+  /* Brand colors → utility classes: bg-brand-primary, text-brand-hover … */
+  --color-brand-primary:  var(--color-brand-primary);
+  --color-brand-hover:    var(--color-brand-hover);
+  --color-brand-dark:     var(--color-brand-dark);
+  --color-brand-surface:  var(--color-brand-surface);
+  --color-brand-border:   var(--color-brand-border);
+
+  /* Surface */
+  --color-surface-base:      var(--color-surface-base);
+  --color-surface-secondary: var(--color-surface-secondary);
+  --color-surface-tertiary:  var(--color-surface-tertiary);
+
+  /* Text */
+  --color-text-primary:   var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary:  var(--color-text-tertiary);
+  --color-text-disabled:  var(--color-text-disabled);
+
+  /* Border */
+  --color-border-default: var(--color-border-default);
+  --color-border-strong:  var(--color-border-strong);
+
+  /* Semantic */
+  --color-semantic-success: var(--color-semantic-success);
+  --color-semantic-neutral: var(--color-semantic-neutral);
+  --color-semantic-info:    var(--color-semantic-info);
+
+  /* Typography scale */
+  --text-display:  28px;
+  --text-title-lg: 22px;
+  --text-title-md: 18px;
+  --text-title-sm: 16px;
+  --text-body-md:  15px;
+  --text-body-sm:  13px;
+  --text-label:    12px;
+  --text-caption:  11px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  background: var(--color-surface-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Typography utilities ───────────────────────────────────────────────── */
+.text-display  { font-size: 28px; font-weight: 700; line-height: 1.25; }
+.text-title-lg { font-size: 22px; font-weight: 700; line-height: 1.3;  }
+.text-title-md { font-size: 18px; font-weight: 600; line-height: 1.35; }
+.text-title-sm { font-size: 16px; font-weight: 600; line-height: 1.4;  }
+.text-body-md  { font-size: 15px; font-weight: 400; line-height: 1.6;  }
+.text-body-sm  { font-size: 13px; font-weight: 400; line-height: 1.55; }
+.text-label    { font-size: 12px; font-weight: 500; line-height: 1.4;  }
+.text-caption  { font-size: 11px; font-weight: 400; line-height: 1.45; }
+
+/* ─── Component base classes ─────────────────────────────────────────────── */
+
+/* Button / Primary */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--color-brand-primary);
+  color: #fff;
+  border-radius: 20px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-primary:hover  { background: var(--color-brand-hover); }
+.btn-primary:active { transform: scale(0.97); }
+.btn-primary:disabled { background: var(--color-text-disabled); cursor: not-allowed; }
+
+/* Button / Secondary */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--color-surface-base);
+  color: var(--color-text-primary);
+  border-radius: 20px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--color-border-default);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.btn-secondary:hover  { background: var(--color-surface-secondary); }
+.btn-secondary:active { transform: scale(0.97); }
+
+/* Tag */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-surface-base);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.tag:hover  { background: var(--color-surface-secondary); }
+.tag-active {
+  background: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  color: #fff;
+}
+
+/* Badge / Success */
+.badge-success {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-semantic-success);
+  color: #fff;
+}
+
+/* Badge / Neutral */
+.badge-neutral {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-surface-tertiary);
+  color: var(--color-semantic-neutral);
+}
+
+/* Card */
+.card {
+  background: var(--color-surface-base);
+  border: 0.5px solid var(--color-border-default);
+  border-radius: 12px;
+}
+
+/* Panel (사이드바/바텀시트 컨테이너) */
+.panel {
+  background: var(--color-surface-base);
+  border: 0.5px solid var(--color-border-default);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(28, 20, 18, 0.12), 0 2px 8px rgba(28, 20, 18, 0.06);
 }
