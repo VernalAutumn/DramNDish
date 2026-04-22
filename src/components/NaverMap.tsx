@@ -501,13 +501,8 @@ export default function NaverMap() {
 
   // ─── window 전역 함수 (인포윈도우 onclick용) ─────────────────────────────
   useEffect(() => {
-    window.__openPlaceDetail = (id: string) => {
-      openDetailRef.current(id)
-      // 모바일: 마커 탭 시 전체 확장 대신 Peek(40dvh) 상태로 노출
-      if (typeof window !== 'undefined' && window.innerWidth < 768) {
-        setSheetState('peek')
-      }
-    }
+    // 시트 상태는 openDetail 내부에서 컨텍스트에 맞게 직접 처리
+    window.__openPlaceDetail = (id: string) => openDetailRef.current(id)
     return () => { delete (window as any).__openPlaceDetail }
   }, [])
 
@@ -520,7 +515,16 @@ export default function NaverMap() {
     savedScrollPosition.current = listScrollRef.current?.scrollTop ?? 0
     setSelectedPlace(place)
     setView('detail')
-    setSheetState('expanded')
+    // 모바일: 마커 탭은 closed/peek/expanded 무관하게 항상 peek으로 통일
+    //   - closed → peek (시트 올라옴)
+    //   - peek   → peek (데이터만 교체, 높이 유지)
+    //   - expanded → peek (과도하게 가리지 않도록 살짝 내려옴)
+    // 데스크탑: 항상 expanded (패널 표시 보장)
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSheetState('peek')
+    } else {
+      setSheetState('expanded')
+    }
     setShowAddPanel(false)
     setActiveId(id)
     setFavCount(place.favorites_count ?? 0)
@@ -2625,7 +2629,7 @@ export default function NaverMap() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleFavorite}
-                    className={`flex items-center justify-center gap-2 active:scale-95 transition-all flex-1 ${
+                    className={`flex items-center justify-center gap-2 active:scale-95 transition-all flex-1 min-h-[44px] ${
                       isFavorited ? 'btn-primary' : 'btn-secondary'
                     }`}
                     style={isFavorited ? { backgroundColor: MARKER_COLOR } : {}}
@@ -2641,7 +2645,7 @@ export default function NaverMap() {
                     href={mapUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn-secondary flex items-center justify-center gap-2 active:scale-95 transition-all flex-1"
+                    className="btn-secondary flex items-center justify-center gap-2 active:scale-95 transition-all flex-1 min-h-[44px]"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={MARKER_COLOR} strokeWidth="2">
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
