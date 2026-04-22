@@ -97,6 +97,8 @@ function inferTypeFromCategory(category: string): 'whisky' | 'bar' | 'restaurant
 }
 
 const DEFAULT_PAYMENT_TAGS  = ['카드', '현금', '온누리']
+
+type SheetState = 'closed' | 'peek' | 'expanded'
 const REGION_ORDER          = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
 const DBLCLICK_ZOOM        = 16
 
@@ -199,10 +201,23 @@ export default function NaverMap() {
   const currentInfoWindowRef = useRef<any>(null)
   const openDetailRef        = useRef<(id: string) => void>(() => {})
   const setupMarkersRef      = useRef<(map: any, data: Place[]) => void>(() => {})
-  const panelWrapperRef      = useRef<HTMLDivElement>(null)
-  const touchStartY          = useRef(0)
-  const touchOpenAtStart     = useRef(false)
-  const panelOpenRef         = useRef(true)
+  const panelWrapperRef          = useRef<HTMLDivElement>(null)
+  const touchStartY              = useRef(0)
+  const sheetStateAtStart        = useRef<SheetState>('expanded')
+  const sheetStateRef            = useRef<SheetState>('expanded')
+  const isScrollSwipe            = useRef(false)
+  // stable function ref — avoids stale closure in native event listeners
+  const applyMobileTransformRef  = useRef((state: SheetState, animate = true) => {
+    const wrapper = panelWrapperRef.current
+    if (!wrapper || typeof window === 'undefined' || window.innerWidth >= 768) return
+    wrapper.style.transition = animate ? '' : 'none'
+    const map: Record<SheetState, string> = {
+      closed:   'calc(100% - 3rem)',
+      peek:     'calc(100% - 40dvh)',
+      expanded: '0px',
+    }
+    wrapper.style.transform = `translateY(${map[state]})`
+  })
   const paymentTagInputRef   = useRef<HTMLInputElement>(null)
   const generalTagInputRef   = useRef<HTMLInputElement>(null)
   const addQueryRef          = useRef<HTMLInputElement>(null)
@@ -222,11 +237,9 @@ export default function NaverMap() {
   const [activeId, setActiveId] = useState<string | null>(null)
 
   // ─── state: panel ────────────────────────────────────────────────────────
-  const [panelOpen, setPanelOpen] = useState(true)
-  const [view,      setView]      = useState<'list' | 'detail'>('list')
-  const [mainTab,   setMainTab]   = useState<'list' | 'favorites'>('list')
-  // ── 모바일 마커 탭 → 요약 카드 ──────────────────────────────────────────
-  const [peekPlace, setPeekPlace] = useState<Place | null>(null)
+  const [sheetState, setSheetState] = useState<SheetState>('expanded')
+  const [view,       setView]       = useState<'list' | 'detail'>('list')
+  const [mainTab,    setMainTab]    = useState<'list' | 'favorites'>('list')
 
   // ─── state: detail ───────────────────────────────────────────────────────
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
@@ -489,20 +502,14 @@ export default function NaverMap() {
   // ─── window 전역 함수 (인포윈도우 onclick용) ─────────────────────────────
   useEffect(() => {
     window.__openPlaceDetail = (id: string) => {
+      openDetailRef.current(id)
+      // 모바일: 마커 탭 시 전체 확장 대신 Peek(40dvh) 상태로 노출
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
-        // 모바일: 요약 카드(Peek Card) 표시 후 사용자가 상세 보기 선택
-        const place = placesRef.current.find((p) => p.id === id)
-        if (place) {
-          setPeekPlace(place)
-          setPanelOpen(false)
-        }
-      } else {
-        // 데스크탑: 기존 상세 패널 즉시 오픈
-        openDetailRef.current(id)
+        setSheetState('peek')
       }
     }
     return () => { delete (window as any).__openPlaceDetail }
-  }, []) // placesRef·setPeekPlace·setPanelOpen 모두 안정적 ref/setter
+  }, [])
 
   // ─── 상세 뷰 열기 ────────────────────────────────────────────────────────
   const openDetail = useCallback(async (id: string) => {
@@ -513,7 +520,7 @@ export default function NaverMap() {
     savedScrollPosition.current = listScrollRef.current?.scrollTop ?? 0
     setSelectedPlace(place)
     setView('detail')
-    setPanelOpen(true)
+    setSheetState('expanded')
     setShowAddPanel(false)
     setActiveId(id)
     setFavCount(place.favorites_count ?? 0)
@@ -575,10 +582,78 @@ export default function NaverMap() {
     }
   }, [])
 
-  useEffect(() => { openDetailRef.current = openDetail }, [openDetail])
-  useEffect(() => { activeIdRef.current    = activeId },    [activeId])
-  useEffect(() => { viewRef.current        = view },        [view])
-  useEffect(() => { panelOpenRef.current   = panelOpen },   [panelOpen])
+  useEffect(() => { openDetailRef.current  = openDetail },   [openDetail])
+  useEffect(() => { activeIdRef.current    = activeId },     [activeId])
+  useEffect(() => { viewRef.current        = view },         [view])
+  useEffect(() => { sheetStateRef.current  = sheetState },   [sheetState])
+
+  // ── 모바일 시트 transform 적용 (sheetState 변경 시) ─────────────────────
+  useEffect(() => {
+    applyMobileTransformRef.current(sheetState, true)
+  }, [sheetState])
+
+  // ── body pull-to-refresh 차단 ────────────────────────────────────────────
+  useEffect(() => {
+    document.body.style.overscrollBehaviorY = 'none'
+    return () => { document.body.style.overscrollBehaviorY = '' }
+  }, [])
+
+  // ── 리스트 스크롤 영역: 상단에서 아래로 스와이프 시 시트 내리기 ─────────
+  useEffect(() => {
+    const el = listScrollRef.current
+    if (!el) return
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY
+      sheetStateAtStart.current = sheetStateRef.current
+      isScrollSwipe.current = false
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      const delta = e.touches[0].clientY - touchStartY.current
+      const scrollTop = el.scrollTop
+      const curState = sheetStateAtStart.current
+      if (!isScrollSwipe.current && scrollTop === 0 && delta > 8
+          && (curState === 'expanded' || curState === 'peek')) {
+        isScrollSwipe.current = true
+        const wrapper = panelWrapperRef.current
+        if (wrapper) wrapper.style.transition = 'none'
+      }
+      if (isScrollSwipe.current) {
+        e.preventDefault()
+        const wrapper = panelWrapperRef.current
+        if (!wrapper) return
+        const h = wrapper.getBoundingClientRect().height
+        const peekPx = window.innerHeight * 0.4
+        const offsets: Record<SheetState, number> = {
+          closed: h - 48, peek: h - peekPx, expanded: 0,
+        }
+        const rawOffset = offsets[curState] + Math.max(0, delta)
+        wrapper.style.transform = `translateY(${Math.min(h - 48, rawOffset)}px)`
+      }
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!isScrollSwipe.current) return
+      isScrollSwipe.current = false
+      const delta = e.changedTouches[0].clientY - touchStartY.current
+      const curState = sheetStateAtStart.current
+      const wrapper = panelWrapperRef.current
+      if (wrapper) wrapper.style.transition = ''
+      if (curState === 'expanded' && delta > 60) {
+        setSheetState('peek')
+      } else if (curState === 'peek' && delta > 60) {
+        setSheetState('closed')
+      } else {
+        applyMobileTransformRef.current(curState, true)
+      }
+    }
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false })
+    el.addEventListener('touchend',   onTouchEnd,   { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove',  onTouchMove)
+      el.removeEventListener('touchend',   onTouchEnd)
+    }
+  }, []) // refs 사용 → 의존성 없음
   useEffect(() => {
     favoritedIdsRef.current = favoritedIds
     if (naverMapRef.current) updateDisplay(naverMapRef.current)
@@ -1636,10 +1711,10 @@ export default function NaverMap() {
     })
   }
 
-  // ─── 바텀 시트 스와이프 핸들러 ───────────────────────────────────────────
+  // ─── 바텀 시트 스와이프 핸들러 (핸들바 + 헤더 영역) ─────────────────────
   const onHandleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY
-    touchOpenAtStart.current = panelOpenRef.current
+    sheetStateAtStart.current = sheetStateRef.current
     const el = panelWrapperRef.current
     if (el) el.style.transition = 'none'
   }
@@ -1647,30 +1722,35 @@ export default function NaverMap() {
   const onHandleTouchMove = (e: React.TouchEvent) => {
     const delta = e.touches[0].clientY - touchStartY.current
     const el = panelWrapperRef.current
-    if (!el) return
+    if (!el || typeof window === 'undefined') return
     const h = el.getBoundingClientRect().height
-    const closedOffset = h - 48 // 3rem = 48px 핸들 높이
-    const baseOffset = touchOpenAtStart.current ? 0 : closedOffset
-    const clampedDelta = touchOpenAtStart.current ? Math.max(0, delta) : Math.min(0, delta)
-    el.style.transform = `translateY(${baseOffset + clampedDelta}px)`
+    const peekPx = window.innerHeight * 0.4  // 40dvh in px
+    const offsets: Record<SheetState, number> = {
+      closed: h - 48, peek: h - peekPx, expanded: 0,
+    }
+    const baseOffset = offsets[sheetStateAtStart.current]
+    const rawOffset = baseOffset + delta
+    // 상단(0)~핸들만 보임(h-48) 사이로 클램핑
+    el.style.transform = `translateY(${Math.max(0, Math.min(h - 48, rawOffset))}px)`
   }
 
   const onHandleTouchEnd = (e: React.TouchEvent) => {
     const delta = e.changedTouches[0].clientY - touchStartY.current
+    const curState = sheetStateAtStart.current
     const el = panelWrapperRef.current
-    if (el) {
-      el.style.transform = ''
-      el.style.transition = ''
-    }
+    if (el) el.style.transition = ''
     const THRESHOLD = 60
-    if (touchOpenAtStart.current && delta > THRESHOLD) {
-      // 스크롤 위치 보존 후 닫기
-      const pos = listScrollRef.current?.scrollTop ?? 0
-      setPanelOpen(false)
-      requestAnimationFrame(() => { if (listScrollRef.current) listScrollRef.current.scrollTop = pos })
-    } else if (!touchOpenAtStart.current && delta < -THRESHOLD) {
-      // 열기
-      setPanelOpen(true)
+    // 3단 스냅 로직
+    let nextState: SheetState = curState
+    if      (curState === 'expanded' && delta >  THRESHOLD) nextState = 'peek'
+    else if (curState === 'peek'     && delta >  THRESHOLD) nextState = 'closed'
+    else if (curState === 'peek'     && delta < -THRESHOLD) nextState = 'expanded'
+    else if (curState === 'closed'   && delta < -THRESHOLD) nextState = 'peek'
+    if (nextState !== curState) {
+      setSheetState(nextState)
+    } else {
+      // 임계값 미달 → 현재 위치로 스냅백
+      applyMobileTransformRef.current(curState, true)
     }
   }
 
@@ -1798,10 +1878,6 @@ export default function NaverMap() {
           </div>
         )}
         <div ref={mapRef} className="w-full h-full" />
-        {/* 요약 카드 활성 시 지도 탭으로 카드 닫기 (z-[35] = 지도 위, 시트 아래) */}
-        {peekPlace && (
-          <div className="md:hidden absolute inset-0 z-[35]" onClick={() => setPeekPlace(null)} />
-        )}
         <Script
           id="naver-maps"
           src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=s1iwnee0mj"
@@ -1816,25 +1892,26 @@ export default function NaverMap() {
       <div
         ref={panelWrapperRef}
         className={[
-          // 모바일 z-40: 컨트롤 패널(z-30)·위치 버튼(z-20) 위로 확실히 올림
-          // 데스크탑 md:z-20: 좌측 패널은 다른 플로팅 요소와 겹치지 않음
+          // 모바일 z-40 / 데스크탑 md:z-20
           'z-40 md:z-20 transition-all duration-300 ease-in-out',
-          // 모바일: 바텀 시트
-          'fixed bottom-0 left-0 right-0',
+          // 모바일: 바텀 시트 (transform은 JS applyMobileTransform으로 제어)
+          'fixed bottom-0 left-0 right-0 overscroll-y-none',
           // 데스크탑: 좌측 플로팅 패널
           'md:absolute md:top-4 md:bottom-4 md:left-4 md:right-auto md:w-[360px]',
-          panelOpen
-            ? 'translate-y-0 md:translate-x-0 md:pointer-events-auto'
-            : 'translate-y-[calc(100%-3rem)] md:translate-y-0 md:-translate-x-[calc(100%+1rem)] md:pointer-events-none',
+          // 데스크탑 전용 translate-x (모바일에서는 JS inline style이 우선)
+          sheetState !== 'closed'
+            ? 'md:translate-x-0 md:pointer-events-auto'
+            : 'md:translate-y-0 md:-translate-x-[calc(100%+1rem)] md:pointer-events-none',
         ].join(' ')}
         style={{ willChange: 'transform' }}
       >
-        {/* 모바일 핸들바 – 스와이프로 열고 닫기 */}
+        {/* 모바일 핸들바 + 전체 상단 스와이프 영역 */}
         <div
-          className="md:hidden flex justify-center items-center py-2 cursor-pointer bg-white rounded-t-2xl touch-none"
+          className="md:hidden flex justify-center items-center py-2 cursor-pointer bg-white rounded-t-2xl touch-none select-none"
           onClick={() => {
             const pos = listScrollRef.current?.scrollTop ?? 0
-            setPanelOpen((v) => !v)
+            const next: SheetState = sheetState !== 'closed' ? 'closed' : 'expanded'
+            setSheetState(next)
             requestAnimationFrame(() => { if (listScrollRef.current) listScrollRef.current.scrollTop = pos })
           }}
           onTouchStart={onHandleTouchStart}
@@ -2509,7 +2586,12 @@ export default function NaverMap() {
           {/* 상세 뷰 */}
           {view === 'detail' && selectedPlace && (
             <>
-              <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center gap-3">
+              <div
+                className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center gap-3 touch-none select-none"
+                onTouchStart={onHandleTouchStart}
+                onTouchMove={onHandleTouchMove}
+                onTouchEnd={onHandleTouchEnd}
+              >
                 <button
                   onClick={() => { setView('list'); setSelectedPlace(null); setActiveId(null) }}
                   className="shrink-0 p-1 -ml-1 text-gray-500 hover:text-gray-800 transition-colors"
@@ -3530,69 +3612,6 @@ export default function NaverMap() {
       </div>
       {/* /플로팅 패널 외부 래퍼 */}
 
-      {/* ── 📍 모바일 마커 요약 카드 (Peek Card) ─────────────────────────── */}
-      {peekPlace && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-[55] pointer-events-auto"
-             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="bg-white rounded-t-2xl shadow-2xl px-4 pt-3 pb-5 border-t border-gray-100">
-            {/* 핸들 */}
-            <div className="flex justify-center mb-3">
-              <div className="w-8 h-1 rounded-full bg-gray-200" />
-            </div>
-            <div className="flex items-start gap-3">
-              {/* 정보 */}
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-gray-900 leading-tight truncate">{peekPlace.name}</h3>
-                <p className="text-xs text-gray-500 mt-0.5 leading-snug line-clamp-1">{peekPlace.address}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span
-                    className="text-[11px] font-bold px-2.5 py-0.5 rounded-full text-white"
-                    style={{ backgroundColor: TYPE_COLOR[peekPlace.type] ?? MARKER_COLOR }}
-                  >
-                    {TYPE_LABEL[peekPlace.type] ?? peekPlace.type}
-                  </span>
-                  {(peekPlace.favorites_count ?? 0) > 0 && (
-                    <span className="text-xs text-gray-400 flex items-center gap-0.5">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
-                           fill={MARKER_COLOR} stroke={MARKER_COLOR} strokeWidth="1.5">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                      </svg>
-                      {peekPlace.favorites_count}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {/* 상세 보기 버튼 */}
-              <button
-                onClick={() => {
-                  setPeekPlace(null)
-                  openDetailRef.current(peekPlace.id)
-                  setPanelOpen(true)
-                }}
-                className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold text-white active:scale-95 transition-all"
-                style={{ backgroundColor: MARKER_COLOR }}
-              >
-                상세 보기
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M9 18l6-6-6-6"/>
-                </svg>
-              </button>
-            </div>
-            {/* 닫기 버튼 */}
-            <button
-              onClick={() => setPeekPlace(null)}
-              className="absolute top-3 right-3 p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              aria-label="닫기"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                   fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── GPS 플로팅 액션 버튼 ────────────────────────────────────────── */}
       {/* 모바일: fixed z-50 → 바텀시트(z-40)/피크카드(z-[55]) 계층에서 항상 가시 */}
@@ -3603,7 +3622,7 @@ export default function NaverMap() {
           })
         }}
         className="fixed right-4 z-50 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-all md:absolute md:z-20 md:bottom-6 md:right-6"
-        style={{ bottom: peekPlace ? 168 : 72 }}
+        style={{ bottom: 72 }}
         title="내 위치로 이동"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -3616,13 +3635,13 @@ export default function NaverMap() {
 
       {/* ── 패널 토글 버튼 (데스크탑 전용) ────────────────────────────── */}
       <button
-        onClick={() => setPanelOpen((v) => !v)}
+        onClick={() => setSheetState((v) => v !== 'closed' ? 'closed' : 'expanded')}
         className="hidden md:flex items-center justify-center absolute top-1/2 -translate-y-1/2 z-30 bg-white shadow-md rounded-r-xl rounded-l-none p-3 min-h-[44px] min-w-[28px] hover:bg-gray-50 transition-[left] duration-300 ease-in-out"
-        style={{ left: panelOpen ? 'calc(1rem + 360px)' : '0' }}
-        aria-label={panelOpen ? '패널 닫기' : '패널 열기'}
+        style={{ left: sheetState !== 'closed' ? 'calc(1rem + 360px)' : '0' }}
+        aria-label={sheetState !== 'closed' ? '패널 닫기' : '패널 열기'}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          {panelOpen ? <path d="M15 18l-6-6 6-6"/> : <path d="M9 18l6-6-6-6"/>}
+          {sheetState !== 'closed' ? <path d="M15 18l-6-6 6-6"/> : <path d="M9 18l6-6-6-6"/>}
         </svg>
       </button>
 
