@@ -101,6 +101,7 @@ const DEFAULT_PAYMENT_TAGS  = ['카드', '현금', '온누리']
 type SheetState = 'closed' | 'peek' | 'expanded'
 const REGION_ORDER          = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
 const DBLCLICK_ZOOM        = 16
+const LIST_CLICK_ZOOM      = 15   // 리스트 클릭 시 최소 줌 레벨
 
 const TYPE_LABEL: Record<string, string> = {
   whisky:     '리쿼샵',
@@ -203,7 +204,7 @@ export default function NaverMap() {
   const infoWindowsRef       = useRef<Record<string, any>>({})
   const clusterMarkersRef    = useRef<any[]>([])
   const currentInfoWindowRef = useRef<any>(null)
-  const openDetailRef        = useRef<(id: string) => void>(() => {})
+  const openDetailRef        = useRef<(id: string, targetZoom?: number) => void>(() => {})
   const setupMarkersRef      = useRef<(map: any, data: Place[]) => void>(() => {})
   const panelWrapperRef          = useRef<HTMLDivElement>(null)
   const touchStartY              = useRef(0)
@@ -513,7 +514,7 @@ export default function NaverMap() {
   }, [])
 
   // ─── 상세 뷰 열기 ────────────────────────────────────────────────────────
-  const openDetail = useCallback(async (id: string) => {
+  const openDetail = useCallback(async (id: string, targetZoom?: number) => {
     if (activeIdRef.current === id && viewRef.current === 'detail') return
     const place = placesRef.current.find((p) => p.id === id)
     if (!place) return
@@ -542,6 +543,13 @@ export default function NaverMap() {
     if (naverMapRef.current && window.naver?.maps) {
       const map = naverMapRef.current
       const pos = new window.naver.maps.LatLng(place.lat, place.lng)
+
+      // targetZoom이 지정되어 있고 현재 줌이 부족하면 먼저 줌 설정
+      // (projection 좌표계가 줌에 종속되므로 panTo 계산 전에 반드시 선행)
+      if (targetZoom !== undefined && map.getZoom() < targetZoom) {
+        map.setZoom(targetZoom, false)  // false = 애니메이션 없이 즉시 적용
+      }
+
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
         // 모바일: peek 시트(40dvh)에 가려지지 않는 가시 영역 중앙으로 오프셋 팬
         // 마커를 화면 상단 60dvh 영역의 중심(30% from top)에 배치
@@ -2380,7 +2388,7 @@ export default function NaverMap() {
                     return (
                       <li key={place.id}>
                         <button
-                          onClick={() => openDetail(place.id)}
+                          onClick={() => openDetail(place.id, LIST_CLICK_ZOOM)}
                           className={`w-full text-left px-5 py-3 transition-colors hover:bg-gray-50 ${isActive ? 'border-l-2' : ''}`}
                           style={isActive ? { backgroundColor: `${accentColor}10`, borderColor: accentColor } : {}}
                         >
@@ -2599,7 +2607,7 @@ export default function NaverMap() {
                               style={isActive ? { borderColor: color, backgroundColor: color + '10' } : {}}>
                               <button
                                 disabled={isFavoriteEditMode}
-                                onClick={() => { if (!isFavoriteEditMode) openDetail(place.id) }}
+                                onClick={() => { if (!isFavoriteEditMode) openDetail(place.id, LIST_CLICK_ZOOM) }}
                                 className="flex-1 text-left px-4 py-3 min-w-0 disabled:cursor-default"
                               >
                                 <div className="flex items-center gap-2">
@@ -3277,7 +3285,7 @@ export default function NaverMap() {
                         <li key={item.id}>
                           <button
                             className="w-full text-left px-5 py-3.5 hover:bg-gray-50 transition-colors"
-                            onClick={() => { setShowActivitySheet(false); openDetail(item.place_id) }}
+                            onClick={() => { setShowActivitySheet(false); openDetail(item.place_id, LIST_CLICK_ZOOM) }}
                           >
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-xs font-bold" style={{ color: MARKER_COLOR }}>{item.place_name}</span>
@@ -3299,7 +3307,7 @@ export default function NaverMap() {
                       <button
                         key={item.id}
                         className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group"
-                        onClick={() => { setShowActivitySheet(false); openDetail(item.place_id) }}
+                        onClick={() => { setShowActivitySheet(false); openDetail(item.place_id, LIST_CLICK_ZOOM) }}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
