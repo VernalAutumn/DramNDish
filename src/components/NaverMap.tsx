@@ -199,6 +199,10 @@ export default function NaverMap() {
   const currentInfoWindowRef = useRef<any>(null)
   const openDetailRef        = useRef<(id: string) => void>(() => {})
   const setupMarkersRef      = useRef<(map: any, data: Place[]) => void>(() => {})
+  const panelWrapperRef      = useRef<HTMLDivElement>(null)
+  const touchStartY          = useRef(0)
+  const touchOpenAtStart     = useRef(false)
+  const panelOpenRef         = useRef(true)
   const paymentTagInputRef   = useRef<HTMLInputElement>(null)
   const generalTagInputRef   = useRef<HTMLInputElement>(null)
   const addQueryRef          = useRef<HTMLInputElement>(null)
@@ -221,6 +225,8 @@ export default function NaverMap() {
   const [panelOpen, setPanelOpen] = useState(true)
   const [view,      setView]      = useState<'list' | 'detail'>('list')
   const [mainTab,   setMainTab]   = useState<'list' | 'favorites'>('list')
+  // ── 모바일 마커 탭 → 요약 카드 ──────────────────────────────────────────
+  const [peekPlace, setPeekPlace] = useState<Place | null>(null)
 
   // ─── state: detail ───────────────────────────────────────────────────────
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
@@ -482,9 +488,21 @@ export default function NaverMap() {
 
   // ─── window 전역 함수 (인포윈도우 onclick용) ─────────────────────────────
   useEffect(() => {
-    window.__openPlaceDetail = (id: string) => openDetailRef.current(id)
+    window.__openPlaceDetail = (id: string) => {
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        // 모바일: 요약 카드(Peek Card) 표시 후 사용자가 상세 보기 선택
+        const place = placesRef.current.find((p) => p.id === id)
+        if (place) {
+          setPeekPlace(place)
+          setPanelOpen(false)
+        }
+      } else {
+        // 데스크탑: 기존 상세 패널 즉시 오픈
+        openDetailRef.current(id)
+      }
+    }
     return () => { delete (window as any).__openPlaceDetail }
-  }, [])
+  }, []) // placesRef·setPeekPlace·setPanelOpen 모두 안정적 ref/setter
 
   // ─── 상세 뷰 열기 ────────────────────────────────────────────────────────
   const openDetail = useCallback(async (id: string) => {
@@ -560,6 +578,7 @@ export default function NaverMap() {
   useEffect(() => { openDetailRef.current = openDetail }, [openDetail])
   useEffect(() => { activeIdRef.current    = activeId },    [activeId])
   useEffect(() => { viewRef.current        = view },        [view])
+  useEffect(() => { panelOpenRef.current   = panelOpen },   [panelOpen])
   useEffect(() => {
     favoritedIdsRef.current = favoritedIds
     if (naverMapRef.current) updateDisplay(naverMapRef.current)
@@ -1617,6 +1636,44 @@ export default function NaverMap() {
     })
   }
 
+  // ─── 바텀 시트 스와이프 핸들러 ───────────────────────────────────────────
+  const onHandleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+    touchOpenAtStart.current = panelOpenRef.current
+    const el = panelWrapperRef.current
+    if (el) el.style.transition = 'none'
+  }
+
+  const onHandleTouchMove = (e: React.TouchEvent) => {
+    const delta = e.touches[0].clientY - touchStartY.current
+    const el = panelWrapperRef.current
+    if (!el) return
+    const h = el.getBoundingClientRect().height
+    const closedOffset = h - 48 // 3rem = 48px 핸들 높이
+    const baseOffset = touchOpenAtStart.current ? 0 : closedOffset
+    const clampedDelta = touchOpenAtStart.current ? Math.max(0, delta) : Math.min(0, delta)
+    el.style.transform = `translateY(${baseOffset + clampedDelta}px)`
+  }
+
+  const onHandleTouchEnd = (e: React.TouchEvent) => {
+    const delta = e.changedTouches[0].clientY - touchStartY.current
+    const el = panelWrapperRef.current
+    if (el) {
+      el.style.transform = ''
+      el.style.transition = ''
+    }
+    const THRESHOLD = 60
+    if (touchOpenAtStart.current && delta > THRESHOLD) {
+      // 스크롤 위치 보존 후 닫기
+      const pos = listScrollRef.current?.scrollTop ?? 0
+      setPanelOpen(false)
+      requestAnimationFrame(() => { if (listScrollRef.current) listScrollRef.current.scrollTop = pos })
+    } else if (!touchOpenAtStart.current && delta < -THRESHOLD) {
+      // 열기
+      setPanelOpen(true)
+    }
+  }
+
   return (
     <div className="relative w-full h-full overflow-hidden">
 
@@ -1741,6 +1798,10 @@ export default function NaverMap() {
           </div>
         )}
         <div ref={mapRef} className="w-full h-full" />
+        {/* 요약 카드 활성 시 지도 탭으로 카드 닫기 (z-[35] = 지도 위, 시트 아래) */}
+        {peekPlace && (
+          <div className="md:hidden absolute inset-0 z-[35]" onClick={() => setPeekPlace(null)} />
+        )}
         <Script
           id="naver-maps"
           src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=s1iwnee0mj"
@@ -1753,6 +1814,7 @@ export default function NaverMap() {
       {/* ── 플로팅 패널 ────────────────────────────────────────────────── */}
       {/* 모바일: bottom sheet / 데스크탑: 좌측 플로팅 패널 */}
       <div
+        ref={panelWrapperRef}
         className={[
           // 모바일 z-40: 컨트롤 패널(z-30)·위치 버튼(z-20) 위로 확실히 올림
           // 데스크탑 md:z-20: 좌측 패널은 다른 플로팅 요소와 겹치지 않음
@@ -1767,10 +1829,17 @@ export default function NaverMap() {
         ].join(' ')}
         style={{ willChange: 'transform' }}
       >
-        {/* 모바일 핸들바 */}
+        {/* 모바일 핸들바 – 스와이프로 열고 닫기 */}
         <div
-          className="md:hidden flex justify-center items-center py-2 cursor-pointer bg-white rounded-t-2xl"
-          onClick={() => setPanelOpen((v) => !v)}
+          className="md:hidden flex justify-center items-center py-2 cursor-pointer bg-white rounded-t-2xl touch-none"
+          onClick={() => {
+            const pos = listScrollRef.current?.scrollTop ?? 0
+            setPanelOpen((v) => !v)
+            requestAnimationFrame(() => { if (listScrollRef.current) listScrollRef.current.scrollTop = pos })
+          }}
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
         >
           <div className="w-10 h-1 rounded-full bg-gray-300" />
         </div>
@@ -2458,6 +2527,11 @@ export default function NaverMap() {
                 </span>
               </div>
 
+              {/* ─── 면책 조항 (헤더 바로 아래 고정) ──────────────────── */}
+              <p className="px-4 py-2 text-[10px] text-gray-400 leading-relaxed border-b border-gray-50 flex-shrink-0">
+                자세한 사항은 네이버 지도 또는 연락을 통해 직접 확인하시길 바랍니다. 본 지도는 위치 정보만 제공하며, 이로 인한 손해를 책임지지 않습니다.
+              </p>
+
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
                 <div className="flex items-start gap-1.5 text-xs text-gray-500">
                   <svg className="shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2784,7 +2858,7 @@ export default function NaverMap() {
 
                 {/* ─── 코멘트 섹션 ──────────────────────────────────────── */}
                 <div className="card p-3">
-                  <p className="text-xs font-bold text-gray-700 mb-2.5">한 줄 평</p>
+                  <p className="text-sm font-bold text-gray-700 mb-2.5">한 줄 평</p>
 
                   {/* 코멘트 작성 폼 */}
                   <div className="mb-3 space-y-2">
@@ -2841,12 +2915,12 @@ export default function NaverMap() {
                             <div className="flex items-start gap-1.5">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-baseline gap-1.5">
-                                  <span className="text-xs font-semibold text-gray-700">{c.nickname}</span>
-                                  <span className="text-[10px] text-gray-300">
+                                  <span className="text-sm font-semibold text-gray-700">{c.nickname}</span>
+                                  <span className="text-xs text-gray-400">
                                     {new Date(c.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
                                   </span>
                                 </div>
-                                <p className="text-xs text-gray-600 mt-0.5 leading-snug">{c.content}</p>
+                                <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">{c.content}</p>
                               </div>
                               {/* 삭제 버튼: 본인·익명 */}
                               {!c.id.startsWith('__opt__') && deletingCommentId !== c.id && canDelete(c.user_id) && (
@@ -2885,7 +2959,7 @@ export default function NaverMap() {
                                     <button
                                       onClick={() => handleVoteComment(c.id, 'like')}
                                       disabled={voted}
-                                      className={`flex items-center gap-1 text-[10px] transition-colors ${
+                                      className={`flex items-center gap-1 text-xs transition-colors ${
                                         isLiked
                                           ? 'text-blue-500 font-semibold cursor-default'
                                           : voted
@@ -2912,7 +2986,7 @@ export default function NaverMap() {
                                     <button
                                       onClick={() => handleVoteComment(c.id, 'dislike')}
                                       disabled={voted}
-                                      className={`flex items-center gap-1 text-[10px] transition-colors ${
+                                      className={`flex items-center gap-1 text-xs transition-colors ${
                                         isDisliked
                                           ? 'text-red-400 font-semibold cursor-default'
                                           : voted
@@ -2966,10 +3040,6 @@ export default function NaverMap() {
                   )}
                 </div>
 
-                {/* ─── 면책 조항 ────────────────────────────────────────── */}
-                <p className="text-[10px] text-gray-400 leading-relaxed pb-2">
-                  자세한 사항은 네이버 지도 또는 연락을 통해 직접 확인하시길 바랍니다. 본 지도는 위치 정보만 제공하며, 이로 인한 손해를 책임지지 않습니다.
-                </p>
               </div>
             </>
           )}
@@ -3460,14 +3530,80 @@ export default function NaverMap() {
       </div>
       {/* /플로팅 패널 외부 래퍼 */}
 
+      {/* ── 📍 모바일 마커 요약 카드 (Peek Card) ─────────────────────────── */}
+      {peekPlace && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-[55] pointer-events-auto"
+             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="bg-white rounded-t-2xl shadow-2xl px-4 pt-3 pb-5 border-t border-gray-100">
+            {/* 핸들 */}
+            <div className="flex justify-center mb-3">
+              <div className="w-8 h-1 rounded-full bg-gray-200" />
+            </div>
+            <div className="flex items-start gap-3">
+              {/* 정보 */}
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900 leading-tight truncate">{peekPlace.name}</h3>
+                <p className="text-xs text-gray-500 mt-0.5 leading-snug line-clamp-1">{peekPlace.address}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span
+                    className="text-[11px] font-bold px-2.5 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: TYPE_COLOR[peekPlace.type] ?? MARKER_COLOR }}
+                  >
+                    {TYPE_LABEL[peekPlace.type] ?? peekPlace.type}
+                  </span>
+                  {(peekPlace.favorites_count ?? 0) > 0 && (
+                    <span className="text-xs text-gray-400 flex items-center gap-0.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+                           fill={MARKER_COLOR} stroke={MARKER_COLOR} strokeWidth="1.5">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                      {peekPlace.favorites_count}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* 상세 보기 버튼 */}
+              <button
+                onClick={() => {
+                  setPeekPlace(null)
+                  openDetailRef.current(peekPlace.id)
+                  setPanelOpen(true)
+                }}
+                className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold text-white active:scale-95 transition-all"
+                style={{ backgroundColor: MARKER_COLOR }}
+              >
+                상세 보기
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M9 18l6-6-6-6"/>
+                </svg>
+              </button>
+            </div>
+            {/* 닫기 버튼 */}
+            <button
+              onClick={() => setPeekPlace(null)}
+              className="absolute top-3 right-3 p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              aria-label="닫기"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── GPS 플로팅 액션 버튼 ────────────────────────────────────────── */}
+      {/* 모바일: fixed z-50 → 바텀시트(z-40)/피크카드(z-[55]) 계층에서 항상 가시 */}
       <button
         onClick={() => {
           requestUserLocation((loc) => {
             naverMapRef.current?.panTo(new window.naver.maps.LatLng(loc.lat, loc.lng))
           })
         }}
-        className="absolute bottom-20 right-4 md:bottom-6 md:right-6 z-20 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-all"
+        className="fixed right-4 z-50 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-all md:absolute md:z-20 md:bottom-6 md:right-6"
+        style={{ bottom: peekPlace ? 168 : 72 }}
         title="내 위치로 이동"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
