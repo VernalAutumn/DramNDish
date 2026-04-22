@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/src/lib/supabase-browser'
+import type { User } from '@supabase/supabase-js'
 
 interface Place {
   id: string
@@ -12,13 +14,17 @@ interface Place {
   favorites_count: number | null
   district: string | null
   city: string | null
+  // places 테이블 신규 컬럼
+  corkage_type:  'impossible' | 'free' | 'paid' | null
+  corkage_fee:   number | null
+  cover_charge:  number | null
 }
 
 interface Tag {
   id: string
   label: string
   count: number
-  type: 'payment' | 'general' | 'category' | 'corkage' | 'cover_charge'
+  type: 'payment' | 'general' | 'category'
 }
 
 interface Comment {
@@ -62,6 +68,11 @@ export default function PlaceDetailClient({
   initialTags: Tag[]
 }) {
   const typeColor = TYPE_COLOR[place.type] ?? BRAND
+  const supabase  = useRef(createClient()).current
+
+  // ─── 인증 상태 ───────────────────────────────────────────────────────────
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [loginToast,  setLoginToast]  = useState(false)
 
   // ─── 즐겨찾기 ────────────────────────────────────────────────────────────
   const [favCount,    setFavCount]    = useState(place.favorites_count ?? 0)
@@ -94,17 +105,36 @@ export default function PlaceDetailClient({
   const [isSubmitting,    setIsSubmitting]    = useState(false)
   const [myNickname,      setMyNickname]      = useState<string | null>(null)
 
-  // ─── 특수 태그 (등록 시 기록된 정보) ────────────────────────────────────
-  const corkageTag     = initialTags.find(t => t.type === 'corkage')
-  const coverChargeTag = initialTags.find(t => t.type === 'cover_charge')
-  const categoryTag    = initialTags.find(t => t.type === 'category')
+  // ─── 카테고리 태그 (식당 대분류) ─────────────────────────────────────────
+  const categoryTag = initialTags.find(t => t.type === 'category')
 
-  // ─── localStorage ────────────────────────────────────────────────────────
+  // ─── localStorage (닉네임만) ─────────────────────────────────────────────
   useEffect(() => {
-    setIsFavorited(localStorage.getItem(`favorited_${place.id}`) === 'true')
     const saved = localStorage.getItem('tastamp_nickname')
     if (saved) { setMyNickname(saved); setNickname(saved) }
   }, [place.id])
+
+  // ─── 인증 구독 + 즐겨찾기 상태 초기화 ──────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setCurrentUser(session?.user ?? null)
+      if (session?.user) {
+        // DB에서 이 장소의 즐겨찾기 여부 조회
+        const { data } = await supabase
+          .from('favorites')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .eq('place_id', place.id)
+          .maybeSingle()
+        setIsFavorited(!!data)
+      }
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user ?? null)
+      if (!session?.user) setIsFavorited(false)
+    })
+    return () => subscription.unsubscribe()
+  }, [place.id, supabase])
 
   useEffect(() => { if (showPaymentInput) paymentInputRef.current?.focus() }, [showPaymentInput])
   useEffect(() => { if (showTagInput)     tagInputRef.current?.focus()     }, [showTagInput])
@@ -125,23 +155,38 @@ export default function PlaceDetailClient({
 
   // ─── 즐겨찾기 토글 ───────────────────────────────────────────────────────
   const handleFavorite = async () => {
+    if (!currentUser) {
+      setLoginToast(true)
+      setTimeout(() => setLoginToast(false), 3500)
+      return
+    }
     if (isFaving) return
     setIsFaving(true)
     const newFaved = !isFavorited
+    // 낙관적 업데이트
     setIsFavorited(newFaved)
     setFavCount(c => newFaved ? c + 1 : Math.max(0, c - 1))
-    localStorage.setItem(`favorited_${place.id}`, String(newFaved))
     try {
-      await fetch(`/api/places/${place.id}/favorite`, {
+      const res = await fetch(`/api/places/${place.id}/favorite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: newFaved ? 'add' : 'remove' }),
       })
+      if (!res.ok) throw new Error()
     } catch {
+      // 실패 시 롤백
       setIsFavorited(!newFaved)
       setFavCount(c => newFaved ? Math.max(0, c - 1) : c + 1)
-      localStorage.setItem(`favorited_${place.id}`, String(!newFaved))
     } finally { setIsFaving(false) }
+  }
+
+  // ─── 구글 로그인 핸들러 ──────────────────────────────────────────────────
+  const handleGoogleLogin = async () => {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${siteUrl}/auth/callback` },
+    })
   }
 
   // ─── 결제수단 투표 ───────────────────────────────────────────────────────
@@ -234,6 +279,8 @@ export default function PlaceDetailClient({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // 로그인 체크 (label onClick에서 1차 차단, 여기서 2차 안전망)
+    if (!currentUser) { setLoginToast(true); setTimeout(() => setLoginToast(false), 3500); e.target.value = ''; return }
     const formData = new FormData()
     formData.append('file', file)
     formData.append('nickname', myNickname || '익명')
@@ -310,6 +357,23 @@ export default function PlaceDetailClient({
   // ─── 렌더 ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* ── 비로그인 즐겨찾기 토스트 ─────────────────────────────────────── */}
+      {loginToast && (
+        <div
+          className="fixed bottom-8 left-1/2 z-50 flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+          style={{ transform: 'translateX(-50%)', background: '#1C1412', color: '#fff', minWidth: '240px' }}
+        >
+          <span className="text-sm font-medium flex-1">로그인이 필요한 기능입니다</span>
+          <button
+            onClick={handleGoogleLogin}
+            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full"
+            style={{ background: 'var(--color-brand-primary)', color: '#fff' }}
+          >
+            로그인
+          </button>
+        </div>
+      )}
 
       {/* 헤더 */}
       <header className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
@@ -418,29 +482,35 @@ export default function PlaceDetailClient({
         )}
 
         {/* 식당: 콜키지 */}
-        {place.type === 'restaurant' && corkageTag && (
+        {place.type === 'restaurant' && place.corkage_type && (
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <SectionTitle>콜키지</SectionTitle>
-            <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${
-              corkageTag.label === '불가'
-                ? 'bg-gray-100 text-gray-500'
-                : 'bg-orange-50 text-orange-600 border border-orange-200'
-            }`}>
-              {corkageTag.label === '불가' ? '콜키지 불가' : `콜키지 ${corkageTag.label}`}
-            </span>
+            {place.corkage_type === 'impossible' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-500">
+                🚫 콜키지 불가
+              </span>
+            )}
+            {place.corkage_type === 'free' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-orange-50 text-orange-600 border border-orange-200">
+                🍾 콜키지 프리
+              </span>
+            )}
+            {place.corkage_type === 'paid' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-orange-50 text-orange-600 border border-orange-200">
+                🍾 {place.corkage_fee && place.corkage_fee > 0
+                  ? `콜키지 병당 ${place.corkage_fee.toLocaleString()}원`
+                  : '콜키지 유료'}
+              </span>
+            )}
           </div>
         )}
 
         {/* 바: 커버차지 */}
-        {place.type === 'bar' && coverChargeTag && (
+        {place.type === 'bar' && place.cover_charge != null && place.cover_charge > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <SectionTitle>커버차지</SectionTitle>
-            <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${
-              coverChargeTag.label.startsWith('없음')
-                ? 'bg-gray-100 text-gray-500'
-                : 'bg-red-50 text-[#BF3A21] border border-[#BF3A21]/30'
-            }`}>
-              커버차지 {coverChargeTag.label}
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-50 text-[#BF3A21] border border-[#BF3A21]/30">
+              🎵 커버차지 {place.cover_charge.toLocaleString()}원
             </span>
           </div>
         )}
@@ -489,6 +559,9 @@ export default function PlaceDetailClient({
           <input type="file" id="photo-upload" accept="image/*" className="hidden"
             onChange={handlePhotoUpload} disabled={isUploading}/>
           <label htmlFor="photo-upload"
+            onClick={(e) => {
+              if (!currentUser) { e.preventDefault(); setLoginToast(true); setTimeout(() => setLoginToast(false), 3500) }
+            }}
             className={`w-full h-20 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
               isUploading ? 'border-gray-200 text-gray-300 cursor-not-allowed'
                           : 'border-gray-200 text-gray-400 hover:border-[#BF3A21] hover:text-[#BF3A21]'}`}>

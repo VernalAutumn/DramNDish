@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import Script from 'next/script'
 import SearchFilter, { FilterState, INITIAL_FILTER } from './SearchFilter'
+import { createClient } from '@/src/lib/supabase-browser'
+import type { User } from '@supabase/supabase-js'
 
 declare global {
   interface Window {
@@ -29,13 +31,17 @@ interface Place {
   naver_place_id: string | null
   favorites_count: number | null
   tags?: PlaceTag[]
+  // 신규 컬럼
+  corkage_type:  'impossible' | 'free' | 'paid' | null
+  corkage_fee:   number | null
+  cover_charge:  number | null
 }
 
 interface Tag {
   id: string
   label: string
   count: number
-  type: 'payment' | 'general' | 'category' | 'corkage' | 'cover_charge'
+  type: 'payment' | 'general' | 'category'
 }
 
 const FOOD_CATEGORIES = ['한식', '일식', '중식', '양식', '아시안', '기타'] as const
@@ -45,6 +51,7 @@ interface PlacePhoto {
   url: string
   nickname: string
   created_at: string
+  user_id?: string
 }
 
 interface Comment {
@@ -54,6 +61,7 @@ interface Comment {
   created_at: string
   likes: number
   dislikes: number
+  user_id?: string
 }
 
 interface SearchResult {
@@ -64,6 +72,16 @@ interface SearchResult {
   naver_place_id: string | null
   coords: { lat: number; lng: number }
   category: string
+}
+
+interface ActivityItem {
+  id: string
+  type: 'comment' | 'photo'
+  content?: string
+  url?: string
+  created_at: string
+  place_id: string
+  place_name: string
 }
 
 const MARKER_COLOR         = '#BF3A21'
@@ -79,8 +97,6 @@ function inferTypeFromCategory(category: string): 'whisky' | 'bar' | 'restaurant
 }
 
 const DEFAULT_PAYMENT_TAGS  = ['카드', '현금', '온누리']
-const CORKAGE_TAGS          = ['프리', '불가'] as const
-const COVER_CHARGE_TAGS     = ['있음', '없음'] as const
 const REGION_ORDER          = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
 const DBLCLICK_ZOOM        = 16
 
@@ -212,7 +228,7 @@ export default function NaverMap() {
   const [loadingTags,   setLoadingTags]   = useState(false)
   const [isFavorited,   setIsFavorited]   = useState(false)
   const [favCount,      setFavCount]      = useState(0)
-  const [isFaving,      setIsFaving]      = useState(false)
+  const isFavingRef = useRef(false)        // state 대신 ref → 즉각 낙관적 업데이트, disabled 없음
   const [showPaymentInput,   setShowPaymentInput]   = useState(false)
   const [newPaymentLabel,    setNewPaymentLabel]    = useState('')
   const [isAddingPaymentTag, setIsAddingPaymentTag] = useState(false)
@@ -220,12 +236,30 @@ export default function NaverMap() {
   const [newGeneralLabel,    setNewGeneralLabel]    = useState('')
   const [isAddingGeneralTag, setIsAddingGeneralTag] = useState(false)
 
+  // ─── state: auth ─────────────────────────────────────────────────────────
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [loginToast,    setLoginToast]    = useState(false)
+  const [reportToast,   setReportToast]   = useState(false)
+  const [overseasToast, setOverseasToast] = useState(false)
+  const supabase = useRef(createClient()).current
+
   // ─── state: favorites ────────────────────────────────────────────────────
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set())
 
+  // ─── state: 우측 카드 대시보드 ──────────────────────────────────────────
+  const [userStats,          setUserStats]          = useState<{ comments: number; photos: number } | null>(null)
+  const [activityList,       setActivityList]       = useState<ActivityItem[]>([])
+  const [showActivitySheet,  setShowActivitySheet]  = useState(false)
+  const [activityTab,        setActivityTab]        = useState<'comment' | 'photo'>('comment')
+  const [nicknameSetupValue, setNicknameSetupValue] = useState('')   // 닉네임 설정 모달 입력값
+  const [showNicknameModal,  setShowNicknameModal]  = useState(false) // 닉네임 설정 모달 표시 여부
+  const [isLoadingStats,     setIsLoadingStats]     = useState(false)
+  const [isSavingNickname,   setIsSavingNickname]   = useState(false)
+  const [isLoadingActivity,  setIsLoadingActivity]  = useState(false)
+
   // ─── state: photos ───────────────────────────────────────────────────────
   const [photos,         setPhotos]         = useState<PlacePhoto[]>([])
-  const [selectedPhoto,  setSelectedPhoto]  = useState<string | null>(null)
+  const [selectedPhoto,  setSelectedPhoto]  = useState<PlacePhoto | null>(null)
   const [isUploading,    setIsUploading]    = useState(false)
   const [myNickname,  setMyNickname]  = useState<string | null>(null)
   const [myCode,      setMyCode]      = useState('')
@@ -270,12 +304,10 @@ export default function NaverMap() {
   const [addPaymentTags,        setAddPaymentTags]        = useState<Set<string>>(new Set())
   // 식당 전용
   const [addCategory,         setAddCategory]         = useState('')
-  const [addCorkageEnabled,   setAddCorkageEnabled]   = useState(false)
-  const [addCorkageType,      setAddCorkageType]      = useState<'free' | 'paid'>('free')
-  const [addCorkageText,      setAddCorkageText]      = useState('')
+  const [addCorkageType,      setAddCorkageType]      = useState<'impossible' | 'free' | 'paid'>('impossible')
+  const [addCorkageFee,       setAddCorkageFee]       = useState('')
   // 바 전용
-  const [addCoverCharge,      setAddCoverCharge]      = useState<'none' | 'exists'>('none')
-  const [addCoverChargeText,  setAddCoverChargeText]  = useState('')
+  const [addCoverChargeAmount, setAddCoverChargeAmount] = useState('')
   // 공통
   const [addComment,             setAddComment]             = useState('')
   const [addCommentPasswordError, setAddCommentPasswordError] = useState(false)
@@ -291,10 +323,6 @@ export default function NaverMap() {
         setPlaces(data)
         placesRef.current = data
         setLoading(false)
-        const ids = new Set(
-          data.filter((p) => localStorage.getItem(`favorited_${p.id}`) === 'true').map((p) => p.id)
-        )
-        setFavoritedIds(ids)
         if (naverMapRef.current) setupMarkersRef.current(naverMapRef.current, data)
       })
       .catch((err) => {
@@ -311,6 +339,125 @@ export default function NaverMap() {
     if (savedCode) setMyCode(savedCode)
   }, [])
 
+  // ─── 인증 상태 구독 + 즐겨찾기 DB 로드 ──────────────────────────────────
+  // ※ 구글 본명(display_name / full_name)은 절대 myNickname에 쓰지 않는다.
+  //   익명 myNickname 은 localStorage 전용이며 로그인 상태와 완전히 분리된다.
+  useEffect(() => {
+    // 현재 세션 확인
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const user = session?.user ?? null
+      setCurrentUser(user)
+      if (user) {
+        loadFavoritesFromDB()
+        const appNick = user.user_metadata?.app_nickname as string | undefined
+        if (!appNick) {
+          setShowNicknameModal(true)
+        }
+        // 이미 닉네임 있는 경우 통계는 카드 열릴 때 or 여기서 즉시 로드
+      }
+    })
+    // 로그인/로그아웃 이벤트 구독
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ?? null
+      setCurrentUser(user)
+      if (user) {
+        loadFavoritesFromDB()
+        setUserStats(null)
+        setNicknameSetupValue('')
+        const appNick = user.user_metadata?.app_nickname as string | undefined
+        if (!appNick) {
+          // 닉네임 미설정 → 모달 오픈
+          setShowNicknameModal(true)
+        } else {
+          // 닉네임 설정됨 → 바로 통계 로드
+          setShowNicknameModal(false)
+        }
+      } else {
+        // ── 로그아웃: 즐겨찾기 초기화 + 익명 상태 복원 ──
+        setFavoritedIds(new Set())
+        favoritedIdsRef.current = new Set()
+        setUserStats(null)
+        setActivityList([])
+        setShowNicknameModal(false)
+        // localStorage에 저장된 익명 닉네임/비밀번호 복원
+        const savedNick = localStorage.getItem('tastamp_nickname')
+        const savedCode = localStorage.getItem('tastamp_code')
+        setMyNickname(savedNick ?? null)
+        setMyCode(savedCode ?? '')
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── DB에서 즐겨찾기 목록 로드 ──────────────────────────────────────────
+  const loadFavoritesFromDB = useCallback(async () => {
+    try {
+      const res = await fetch('/api/favorites')
+      if (!res.ok) return
+      const ids: string[] = await res.json()
+      const idSet = new Set(ids)
+      setFavoritedIds(idSet)
+      favoritedIdsRef.current = idSet
+      // 마커 갱신 (star badge 반영)
+      if (naverMapRef.current && placesRef.current.length > 0) {
+        setupMarkersRef.current(naverMapRef.current, placesRef.current)
+      }
+    } catch { /* 네트워크 오류 무시 */ }
+  }, [])
+
+  // ─── 유저 통계 로드 ─────────────────────────────────────────────────────
+  const loadUserStats = useCallback(async () => {
+    setIsLoadingStats(true)
+    try {
+      const res = await fetch('/api/user/stats')
+      if (res.ok) setUserStats(await res.json())
+    } catch { /* 무시 */ }
+    finally { setIsLoadingStats(false) }
+  }, [])
+
+  // ─── 활동 내역 로드 ─────────────────────────────────────────────────────
+  const loadActivity = useCallback(async () => {
+    setIsLoadingActivity(true)
+    try {
+      const res = await fetch('/api/user/activity')
+      if (res.ok) setActivityList(await res.json())
+    } catch { /* 무시 */ }
+    finally { setIsLoadingActivity(false) }
+  }, [])
+
+  // ─── 로그아웃 ────────────────────────────────────────────────────────────
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut()
+  }, [supabase])
+
+  // ─── 닉네임 저장 (app_nickname 키 사용, 구글 본명과 분리) ────────────────
+  const handleSaveNickname = useCallback(async () => {
+    if (!currentUser || isSavingNickname) return
+    const nickname = nicknameSetupValue.trim()
+    if (!nickname) return
+    setIsSavingNickname(true)
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        data: { app_nickname: nickname },
+      })
+      if (!error && data.user) {
+        setCurrentUser(data.user)
+        setShowNicknameModal(false)  // 모달 닫기 (영구)
+        setNicknameSetupValue('')
+        loadUserStats()              // 통계 즉시 로드
+      }
+    } catch { /* 무시 */ }
+    finally { setIsSavingNickname(false) }
+  }, [currentUser, nicknameSetupValue, isSavingNickname, supabase, loadUserStats])
+
+  // ─── 카드 열릴 때 대시보드 통계 로드 ─────────────────────────────────────
+  useEffect(() => {
+    const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
+    if (showProfileCard && currentUser && appNick && !isLoadingStats) {
+      loadUserStats()
+    }
+  }, [showProfileCard]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── 태그 입력 포커스 ────────────────────────────────────────────────────
   useEffect(() => {
     if (showPaymentInput) paymentTagInputRef.current?.focus()
@@ -326,8 +473,8 @@ export default function NaverMap() {
       setSelectedSearchResult(null)
       setAddPaymentTags(new Set())
       setAddCategory('')
-      setAddCorkageEnabled(false); setAddCorkageType('free'); setAddCorkageText('')
-      setAddCoverCharge('none'); setAddCoverChargeText('')
+      setAddCorkageType('impossible'); setAddCorkageFee('')
+      setAddCoverChargeAmount('')
       setAddComment('')
       setTimeout(() => addQueryRef.current?.focus(), 50)
     }
@@ -352,7 +499,7 @@ export default function NaverMap() {
     setShowAddPanel(false)
     setActiveId(id)
     setFavCount(place.favorites_count ?? 0)
-    setIsFavorited(localStorage.getItem(`favorited_${place.id}`) === 'true')
+    setIsFavorited(favoritedIdsRef.current.has(place.id))  // ref → stale closure 방지
 
     if (naverMapRef.current && window.naver?.maps) {
       naverMapRef.current.panTo(new window.naver.maps.LatLng(place.lat, place.lng))
@@ -460,61 +607,95 @@ export default function NaverMap() {
     )
   }, [])
 
+  // ─── 비로그인 토스트 표시 ────────────────────────────────────────────────
+  const showLoginRequired = useCallback(() => {
+    setLoginToast(true)
+    setTimeout(() => setLoginToast(false), 3500)
+  }, [])
+
+  // ─── 해외 탭 클릭 (준비중 안내) ──────────────────────────────────────────
+  const handleOverseasClick = useCallback(() => {
+    setOverseasToast(true)
+    setTimeout(() => setOverseasToast(false), 4000)
+  }, [])
+
   // ─── 리스트 아이템 즐겨찾기 빠른 토글 ──────────────────────────────────
   const handleFavoriteById = useCallback(async (placeId: string) => {
-    const newFaved = !favoritedIds.has(placeId)
-    localStorage.setItem(`favorited_${placeId}`, String(newFaved))
+    if (!currentUser) { showLoginRequired(); return }
+
+    // ref에서 최신 상태 읽기 → stale closure 방지, deps에서 favoritedIds 제거 가능
+    const newFaved = !favoritedIdsRef.current.has(placeId)
+    // 즉시 낙관적 업데이트
     setFavoritedIds((prev) => {
       const next = new Set(prev)
       if (newFaved) next.add(placeId); else next.delete(placeId)
       return next
     })
     try {
-      await fetch(`/api/places/${placeId}/favorite`, {
+      const res = await fetch(`/api/places/${placeId}/favorite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: newFaved ? 'add' : 'remove' }),
       })
+      if (!res.ok) throw new Error()
     } catch {
-      localStorage.setItem(`favorited_${placeId}`, String(!newFaved))
+      // 실패 시 롤백
       setFavoritedIds((prev) => {
         const next = new Set(prev)
         if (!newFaved) next.add(placeId); else next.delete(placeId)
         return next
       })
     }
-  }, [favoritedIds])
+  }, [currentUser, showLoginRequired]) // favoritedIds 제거 → ref로 읽으므로 불필요
 
-  // ─── 즐겨찾기 토글 ──────────────────────────────────────────────────────
+  // ─── 즐겨찾기 토글 (상세 패널) ──────────────────────────────────────────
   const handleFavorite = async () => {
-    if (isFaving || !selectedPlace) return
-    setIsFaving(true)
-    const newFaved = !isFavorited
+    if (!currentUser) { showLoginRequired(); return }
+    if (isFavingRef.current || !selectedPlace) return
+    isFavingRef.current = true
+
+    // ── 낙관적 업데이트: API 응답 전에 즉시 반영 ──────────────────────────
+    // ref에서 현재 상태 읽기 → stale closure 원천 차단
+    const placeId  = selectedPlace.id
+    const newFaved = !favoritedIdsRef.current.has(placeId)
     setIsFavorited(newFaved)
     setFavCount((c) => newFaved ? c + 1 : Math.max(0, c - 1))
-    localStorage.setItem(`favorited_${selectedPlace.id}`, String(newFaved))
     setFavoritedIds((prev) => {
       const next = new Set(prev)
-      if (newFaved) next.add(selectedPlace.id); else next.delete(selectedPlace.id)
+      if (newFaved) next.add(placeId); else next.delete(placeId)
       return next
     })
+
+    // ── 백그라운드 API 호출 ────────────────────────────────────────────────
     try {
-      await fetch(`/api/places/${selectedPlace.id}/favorite`, {
+      const res = await fetch(`/api/places/${placeId}/favorite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: newFaved ? 'add' : 'remove' }),
       })
+      if (!res.ok) throw new Error()
+
+      // ── 서버 최종값으로 덮어쓰기 (숫자 어긋남 방지) ─────────────────────
+      const { favorites_count } = (await res.json()) as { favorites_count: number }
+      setFavCount(favorites_count)
+      // places 캐시도 갱신 → 상세 패널 재진입 시 stale 방지
+      setPlaces((prev) => prev.map((p) =>
+        p.id === placeId ? { ...p, favorites_count } : p,
+      ))
+      placesRef.current = placesRef.current.map((p) =>
+        p.id === placeId ? { ...p, favorites_count } : p,
+      )
     } catch {
+      // ── 실패 시 롤백 ────────────────────────────────────────────────────
       setIsFavorited(!newFaved)
       setFavCount((c) => newFaved ? Math.max(0, c - 1) : c + 1)
-      localStorage.setItem(`favorited_${selectedPlace.id}`, String(!newFaved))
       setFavoritedIds((prev) => {
         const next = new Set(prev)
-        if (!newFaved) next.add(selectedPlace.id); else next.delete(selectedPlace.id)
+        if (!newFaved) next.add(placeId); else next.delete(placeId)
         return next
       })
     } finally {
-      setIsFaving(false)
+      isFavingRef.current = false
     }
   }
 
@@ -647,10 +828,13 @@ export default function NaverMap() {
   const handleSubmitPanelComment = async () => {
     const content = newPanelComment.trim()
     if (!content || isSubmittingComment || !selectedPlace) return
-    if (!myCode) { setCommentPasswordError(true); setShowProfileCard(true); return }
+    // 로그인 사용자는 비밀번호 불필요
+    if (!currentUser && !myCode) { setCommentPasswordError(true); setShowProfileCard(true); return }
     setCommentPasswordError(false)
     setIsSubmittingComment(true)
-    const nick = myNickname || '익명'
+    // 로그인 유저는 app_nickname 사용, 익명 유저는 로컬 닉네임 사용
+    const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
+    const nick = appNick || myNickname || '익명'
     const optimistic: Comment = {
       id: `__opt__${Date.now()}`,
       nickname: nick,
@@ -670,6 +854,8 @@ export default function NaverMap() {
       if (!res.ok) throw new Error('등록 실패')
       const saved: Comment = await res.json()
       setComments((prev) => prev.map((c) => (c.id === optimistic.id ? saved : c)))
+      // 로그인 유저: 통계 즉시 반영
+      if (currentUser) setUserStats((prev) => prev ? { ...prev, comments: prev.comments + 1 } : prev)
     } catch (err) {
       console.error('[panel comment]', err)
       setComments((prev) => prev.filter((c) => c.id !== optimistic.id))
@@ -679,9 +865,59 @@ export default function NaverMap() {
     }
   }
 
-  // ─── 코멘트 삭제 (인라인 폼 열기 / 확인) ───────────────────────────────
-  const handleDeleteComment = (commentId: string) => {
-    setDeletingCommentId(commentId)
+  // ─── 삭제/신고 버튼 노출 권한 판정 ────────────────────────────────────
+  // 삭제: 본인 글(user_id 일치) + 익명 글(user_id null)
+  const canDelete = (itemUserId?: string | null) =>
+    !itemUserId || itemUserId === currentUser?.id
+  // 신고: 익명 글(user_id null) + 타인 글(user_id 불일치) — 본인 글만 제외
+  const canReport = (itemUserId?: string | null) =>
+    !itemUserId || itemUserId !== currentUser?.id
+
+  // ─── 신고 핸들러 ────────────────────────────────────────────────────────
+  const handleReport = useCallback(async (
+    reported_item_id: string,
+    item_type: 'comment' | 'photo',
+  ) => {
+    const reason = window.prompt('신고 사유를 입력해 주세요. (최대 500자)')?.trim()
+    if (!reason) return                         // 취소 or 빈 값
+    if (reason.length > 500) {
+      alert('신고 사유는 500자 이내로 입력해주세요.')
+      return
+    }
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reported_item_id, item_type, reason }),
+      })
+      if (!res.ok) throw new Error()
+      setReportToast(true)
+      setTimeout(() => setReportToast(false), 4000)
+    } catch {
+      alert('신고 접수 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    }
+  }, [])
+
+  // ─── 코멘트 삭제 (소유자 즉시 삭제 / 익명 인라인 폼) ─────────────────
+  const handleDeleteComment = async (comment: Comment) => {
+    if (!selectedPlace) return
+    // 삭제 전 사용자 확인
+    if (!window.confirm('정말 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.')) return
+    // 로그인 유저 본인 글: 비밀번호 없이 즉시 삭제
+    if (currentUser && comment.user_id && comment.user_id === currentUser.id) {
+      const res = await fetch(`/api/places/${selectedPlace.id}/comments/${comment.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        setComments((prev) => prev.filter((c) => c.id !== comment.id))
+        if (currentUser) setUserStats((prev) => prev ? { ...prev, comments: Math.max(0, prev.comments - 1) } : prev)
+      }
+      return
+    }
+    // 익명 글 또는 타인 글: 비밀번호 인라인 폼 표시
+    setDeletingCommentId(comment.id)
     setDeleteInputCode('')
   }
   const handleConfirmDeleteComment = async () => {
@@ -700,9 +936,26 @@ export default function NaverMap() {
     }
   }
 
-  // ─── 사진 삭제 (인라인 폼 열기 / 확인) ─────────────────────────────────
-  const handleDeletePhoto = (photoId: string) => {
-    setDeletingPhotoId(photoId)
+  // ─── 사진 삭제 (소유자 즉시 삭제 / 익명 인라인 폼) ─────────────────────
+  const handleDeletePhoto = async (photo: PlacePhoto) => {
+    if (!selectedPlace) return
+    // 삭제 전 사용자 확인
+    if (!window.confirm('정말 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.')) return
+    // 로그인 유저 본인 글: 비밀번호 없이 즉시 삭제
+    if (currentUser && photo.user_id && photo.user_id === currentUser.id) {
+      const res = await fetch(`/api/places/${selectedPlace.id}/photos/${photo.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        setPhotos((prev) => prev.filter((p) => p.id !== photo.id))
+        if (currentUser) setUserStats((prev) => prev ? { ...prev, photos: Math.max(0, prev.photos - 1) } : prev)
+      }
+      return
+    }
+    // 익명 글 또는 타인 글: 비밀번호 인라인 폼 표시
+    setDeletingPhotoId(photo.id)
     setDeleteInputCode('')
   }
   const handleConfirmDeletePhoto = async () => {
@@ -770,12 +1023,21 @@ export default function NaverMap() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !selectedPlace) return
-    if (!myCode) { setPhotoPasswordError(true); setShowProfileCard(true); e.target.value = ''; return }
+    // 로그인 체크 (label onClick에서 1차 차단, 여기서 2차 안전망)
+    if (!currentUser) { showLoginRequired(); e.target.value = ''; return }
+    // 익명 사용자는 비밀번호 필수
+    if (!currentUser && !myCode) { setPhotoPasswordError(true); setShowProfileCard(true); e.target.value = ''; return }
     setPhotoPasswordError(false)
+
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('nickname', myNickname || '익명')
-    formData.append('code', myCode)
+    if (!currentUser) {
+      // 익명: nickname + code 전송 (서버에서 검증)
+      formData.append('nickname', myNickname || '익명')
+      formData.append('code', myCode)
+    }
+    // 로그인 유저는 서버가 쿠키에서 user_id·app_nickname을 직접 읽으므로 별도 전송 불필요
+
     setIsUploading(true)
     try {
       const res = await fetch(`/api/places/${selectedPlace.id}/photos`, {
@@ -785,6 +1047,8 @@ export default function NaverMap() {
       if (!res.ok) throw new Error('업로드 실패')
       const newPhoto = await res.json()
       setPhotos((prev) => [newPhoto, ...prev])
+      // 로그인 유저: 통계 즉시 반영
+      if (currentUser) setUserStats((prev) => prev ? { ...prev, photos: prev.photos + 1 } : prev)
     } catch (err) {
       console.error('[photo upload]', err)
       alert('사진 업로드 중 오류가 발생했습니다.')
@@ -823,8 +1087,8 @@ export default function NaverMap() {
   // ─── 장소 등록 ───────────────────────────────────────────────────────────
   const handleAddPlace = async (result: SearchResult) => {
     if (isAdding) return
-    // 한 줄 평 입력 시 비밀번호 필수
-    if (addComment.trim() && !myCode) {
+    // 한 줄 평 입력 시 비밀번호 필수 (비로그인 사용자만)
+    if (!currentUser && addComment.trim() && !myCode) {
       setAddCommentPasswordError(true)
       setShowProfileCard(true)
       alert('비밀번호를 설정해 주세요.')
@@ -846,9 +1110,18 @@ export default function NaverMap() {
           city:            result.city,
           lat:             result.coords.lat,
           lng:             result.coords.lng,
+          // 식당: 콜키지 (DB 직접 저장)
+          ...(addType === 'restaurant' ? {
+            corkage_type: addCorkageType,
+            corkage_fee:  addCorkageType === 'paid' ? (parseInt(addCorkageFee, 10) || 0) : 0,
+          } : {}),
+          // 바: 커버차지 금액 (DB 직접 저장)
+          ...(addType === 'bar' ? {
+            cover_charge: parseInt(addCoverChargeAmount, 10) || 0,
+          } : {}),
           ...(addComment.trim() ? {
             comment:  addComment.trim(),
-            nickname: myNickname || '익명',
+            nickname: (currentUser?.user_metadata?.app_nickname as string | undefined) || myNickname || '익명',
             code:     myCode,
           } : {}),
         }),
@@ -859,22 +1132,13 @@ export default function NaverMap() {
         return
       }
 
-      // 타입별 태그 등록
+      // 타입별 태그 등록 (payment: 리쿼샵 결제수단, category: 식당 대분류)
+      // corkage / cover_charge 는 places 테이블에 직접 저장되므로 태그로 등록하지 않음
       const tagsToPost: { type: string; label: string }[] = []
       if (addType === 'whisky') {
         addPaymentTags.forEach((label) => tagsToPost.push({ type: 'payment', label }))
       } else if (addType === 'restaurant') {
         if (addCategory) tagsToPost.push({ type: 'category', label: addCategory })
-        if (!addCorkageEnabled) {
-          tagsToPost.push({ type: 'corkage', label: '불가' })
-        } else if (addCorkageType === 'free') {
-          tagsToPost.push({ type: 'corkage', label: '프리' })
-        } else {
-          tagsToPost.push({ type: 'corkage', label: `유료${addCorkageText.trim() ? ': ' + addCorkageText.trim() : ''}` })
-        }
-      } else if (addType === 'bar') {
-        if (addCoverCharge === 'exists')
-          tagsToPost.push({ type: 'cover_charge', label: `있음${addCoverChargeText.trim() ? ': ' + addCoverChargeText.trim() : ''}` })
       }
 
       const posts: Promise<any>[] = tagsToPost.map((tag) =>
@@ -914,26 +1178,6 @@ export default function NaverMap() {
     return [...dbPayment.slice().sort((a, b) => b.count - a.count), ...suggestions]
   }, [selectedTags])
 
-  // ─── 콜키지 정책 목록 (식당 전용) ──────────────────────────────────────
-  const corkageTagsDisplay = useMemo(() => {
-    const db       = selectedTags.filter((t) => t.type === 'corkage')
-    const dbLabels = new Set(db.map((t) => t.label))
-    const stubs    = CORKAGE_TAGS
-      .filter((l) => !dbLabels.has(l))
-      .map((l) => ({ id: `__corkage__${l}`, label: l, count: 0, type: 'corkage' as const }))
-    return [...db.slice().sort((a, b) => b.count - a.count), ...stubs]
-  }, [selectedTags])
-
-  // ─── 커버차지 정책 목록 (바 전용) ────────────────────────────────────────
-  const coverChargeTagsDisplay = useMemo(() => {
-    const db       = selectedTags.filter((t) => t.type === 'cover_charge')
-    const dbLabels = new Set(db.map((t) => t.label))
-    const stubs    = COVER_CHARGE_TAGS
-      .filter((l) => !dbLabels.has(l))
-      .map((l) => ({ id: `__cover__${l}`, label: l, count: 0, type: 'cover_charge' as const }))
-    return [...db.slice().sort((a, b) => b.count - a.count), ...stubs]
-  }, [selectedTags])
-
   // ─── 일반 태그 목록 ──────────────────────────────────────────────────────
   const generalTagsDisplay = useMemo(() => {
     return selectedTags
@@ -960,8 +1204,9 @@ export default function NaverMap() {
     const result = places.filter((p) => {
       if (query.trim() && !p.name.toLowerCase().includes(query.trim().toLowerCase())) return false
       if (type !== 'all' && p.type !== type) return false
-      // 콜키지: '불가' 이외의 corkage 태그('프리', '유료*')가 반드시 존재해야 함
-      if (corkage && !p.tags?.some((t) => t.type === 'corkage' && t.label !== '불가')) return false
+      // 콜키지: places.corkage_type이 'free' 또는 'paid'인 경우만 포함
+      if (corkage && p.corkage_type === 'impossible') return false
+      if (corkage && !p.corkage_type) return false
       // 카테고리: 선택된 카테고리 중 하나라도 정확히 일치하는 태그가 있어야 함 (OR)
       if (categories.length > 0 && !p.tags?.some((t) => t.type === 'category' && categories.includes(t.label))) return false
       return true
@@ -1363,8 +1608,130 @@ export default function NaverMap() {
     : '#'
 
   // ─── 렌더 ────────────────────────────────────────────────────────────────
+  // ─── 구글 로그인 핸들러 (토스트에서 사용) ───────────────────────────────
+  const handleGoogleLogin = async () => {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${siteUrl}/auth/callback` },
+    })
+  }
+
   return (
     <div className="relative w-full h-full overflow-hidden">
+
+      {/* ── 비로그인 즐겨찾기 토스트 ────────────────────────────────────── */}
+      {loginToast && (
+        <div
+          className="fixed bottom-24 left-1/2 z-[200] flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+          style={{
+            transform: 'translateX(-50%)',
+            background: '#1C1412',
+            color: '#fff',
+            minWidth: '240px',
+          }}
+        >
+          <span className="text-sm font-medium flex-1">로그인이 필요한 기능입니다</span>
+          <button
+            onClick={handleGoogleLogin}
+            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full"
+            style={{ background: 'var(--color-brand-primary)', color: '#fff' }}
+          >
+            로그인
+          </button>
+        </div>
+      )}
+
+      {/* ── 신고 완료 토스트 ────────────────────────────────────────────── */}
+      {reportToast && (
+        <div
+          className="fixed bottom-24 left-1/2 z-[200] flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+          style={{ transform: 'translateX(-50%)', background: '#1C1412', color: '#fff', minWidth: '280px' }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5" className="shrink-0">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+          </svg>
+          <span className="text-sm font-medium flex-1">
+            신고가 접수되었습니다. 관리자 검토 후 조치됩니다.
+          </span>
+        </div>
+      )}
+
+      {/* ── 해외 준비중 토스트 ──────────────────────────────────────────── */}
+      {overseasToast && (
+        <div
+          className="fixed bottom-24 left-1/2 z-[200] flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+          style={{ transform: 'translateX(-50%)', background: '#1C1412', color: '#fff', minWidth: '260px' }}
+        >
+          <span className="text-sm font-medium flex-1">
+            해외는 곧 추가 예정입니다! ✈️
+          </span>
+        </div>
+      )}
+
+      {/* ── 📱 모바일 국내/해외 탑 앱바 (md 미만) ──────────────────────── */}
+      <div
+        className="md:hidden fixed top-0 left-0 right-0 z-30 flex bg-white border-b border-gray-100"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        {/* 국내: 활성 */}
+        <button
+          className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-bold border-b-2 transition-colors"
+          style={{ color: MARKER_COLOR, borderColor: MARKER_COLOR }}
+        >
+          국내
+        </button>
+
+        {/* 해외: 시각적 비활성 */}
+        <button
+          aria-disabled="true"
+          onClick={handleOverseasClick}
+          className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors"
+          style={{ opacity: 0.45, cursor: 'not-allowed', filter: 'grayscale(1)', color: '#374151' }}
+        >
+          해외
+          <span
+            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: '#e5e7eb', color: '#6b7280' }}
+          >
+            준비중
+          </span>
+        </button>
+      </div>
+
+      {/* ── 💻 데스크탑 국내/해외 플로팅 알약 (md 이상) ─────────────────── */}
+      {/* fixed + left-1/2 + -translate-x-1/2 → 뷰포트 정중앙 고정 */}
+      <div
+        className="hidden md:flex fixed top-4 left-1/2 -translate-x-1/2 z-50 items-center gap-0.5 rounded-full p-1 shadow-xl"
+        style={{
+          background: 'rgba(255,255,255,0.96)',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
+        {/* 국내: 활성 */}
+        <button
+          className="px-5 py-1.5 rounded-full text-sm font-bold transition-all shadow-sm"
+          style={{ background: MARKER_COLOR + '18', color: MARKER_COLOR }}
+        >
+          국내
+        </button>
+
+        {/* 해외: 시각적 비활성 */}
+        <button
+          aria-disabled="true"
+          onClick={handleOverseasClick}
+          className="px-5 py-1.5 rounded-full text-sm font-semibold transition-all flex items-center gap-1.5"
+          style={{ opacity: 0.45, cursor: 'not-allowed', filter: 'grayscale(1)', color: '#374151' }}
+        >
+          해외
+          <span
+            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: '#e5e7eb', color: '#6b7280' }}
+          >
+            준비중
+          </span>
+        </button>
+      </div>
 
       {/* ── 지도 (전체 배경) ────────────────────────────────────────────── */}
       <div className="absolute inset-0 z-0">
@@ -1387,7 +1754,9 @@ export default function NaverMap() {
       {/* 모바일: bottom sheet / 데스크탑: 좌측 플로팅 패널 */}
       <div
         className={[
-          'z-20 transition-all duration-300 ease-in-out',
+          // 모바일 z-40: 컨트롤 패널(z-30)·위치 버튼(z-20) 위로 확실히 올림
+          // 데스크탑 md:z-20: 좌측 패널은 다른 플로팅 요소와 겹치지 않음
+          'z-40 md:z-20 transition-all duration-300 ease-in-out',
           // 모바일: 바텀 시트
           'fixed bottom-0 left-0 right-0',
           // 데스크탑: 좌측 플로팅 패널
@@ -1407,24 +1776,27 @@ export default function NaverMap() {
         </div>
 
         <div
-          className="panel w-full h-[75dvh] md:h-full flex flex-col overflow-hidden md:rounded-2xl"
-          style={{}}
+          className="panel w-full md:!h-full flex flex-col overflow-hidden md:rounded-2xl"
+          style={{ height: 'calc(100dvh - env(safe-area-inset-top, 0px) - 64px)' }}
         >
 
           {/* 목록 / 즐겨찾기 탭 헤더 */}
           {view === 'list' && !showAddPanel && (
             <div className="flex border-b border-border-default flex-shrink-0">
-              {(['list', 'favorites'] as const).map((tab) => (
+              {([
+                { key: 'list',      label: '목록' },
+                { key: 'favorites', label: '즐겨찾기' },
+              ] as const).map(({ key, label }) => (
                 <button
-                  key={tab}
-                  onClick={() => setMainTab(tab)}
+                  key={key}
+                  onClick={() => setMainTab(key)}
                   className={`flex-1 py-3 text-label font-semibold transition-colors border-b-2 -mb-px ${
-                    mainTab === tab
+                    mainTab === key
                       ? 'border-brand-primary text-brand-primary'
                       : 'border-transparent text-text-tertiary hover:text-text-secondary'
                   }`}
                 >
-                  {tab === 'list' ? '목록' : '즐겨찾기'}
+                  {label}
                 </button>
               ))}
             </div>
@@ -1498,8 +1870,8 @@ export default function NaverMap() {
                                     setAddType(inferred)
                                     setAddPaymentTags(new Set())
                                     setAddCategory('')
-                                    setAddCorkageEnabled(false); setAddCorkageType('free'); setAddCorkageText('')
-                                    setAddCoverCharge('none'); setAddCoverChargeText('')
+                                    setAddCorkageType('impossible'); setAddCorkageFee('')
+                                    setAddCoverChargeAmount('')
                                   }
                                 }
                               }}
@@ -1545,8 +1917,8 @@ export default function NaverMap() {
                               setAddType(value)
                               setAddPaymentTags(new Set())
                               setAddCategory('')
-                              setAddCorkageEnabled(false); setAddCorkageType('free'); setAddCorkageText('')
-                              setAddCoverCharge('none'); setAddCoverChargeText('')
+                              setAddCorkageType('impossible'); setAddCorkageFee('')
+                              setAddCoverChargeAmount('')
                             }}
                             className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
                               addType === value
@@ -1615,76 +1987,47 @@ export default function NaverMap() {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-gray-500 mb-2">콜키지</p>
-                          <button
-                            onClick={() => setAddCorkageEnabled((v) => !v)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all mb-2 ${
-                              addCorkageEnabled ? 'text-white border-transparent' : 'bg-white text-gray-400 border-gray-200'
-                            }`}
-                            style={addCorkageEnabled ? { backgroundColor: TYPE_COLOR.restaurant } : {}}
-                          >
-                            <span className={`w-7 h-4 rounded-full relative transition-colors ${addCorkageEnabled ? 'bg-white/30' : 'bg-gray-200'}`}>
-                              <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${addCorkageEnabled ? 'left-3.5' : 'left-0.5'}`} />
-                            </span>
-                            {addCorkageEnabled ? '콜키지 가능' : '콜키지 불가'}
-                          </button>
-                          {addCorkageEnabled && (
-                            <div className="space-y-2">
-                              <div className="flex gap-2">
-                                {(['free', 'paid'] as const).map((v) => (
-                                  <button
-                                    key={v}
-                                    onClick={() => setAddCorkageType(v)}
-                                    className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                                      addCorkageType === v ? 'text-white border-transparent' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                                    }`}
-                                    style={addCorkageType === v ? { backgroundColor: TYPE_COLOR.restaurant } : {}}
-                                  >
-                                    {v === 'free' ? '콜키지 프리' : '유료'}
-                                  </button>
-                                ))}
-                              </div>
-                              {addCorkageType === 'paid' && (
-                                <input
-                                  type="text"
-                                  value={addCorkageText}
-                                  onChange={(e) => setAddCorkageText(e.target.value)}
-                                  placeholder="예: 병당 2만원"
-                                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-300"
-                                />
-                              )}
-                            </div>
+                          <div className="flex gap-2">
+                            {(['impossible', 'free', 'paid'] as const).map((v) => (
+                              <button
+                                key={v}
+                                onClick={() => setAddCorkageType(v)}
+                                className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                  addCorkageType === v ? 'text-white border-transparent' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                                }`}
+                                style={addCorkageType === v ? { backgroundColor: TYPE_COLOR.restaurant } : {}}
+                              >
+                                {v === 'impossible' ? '불가' : v === 'free' ? '프리' : '유료'}
+                              </button>
+                            ))}
+                          </div>
+                          {addCorkageType === 'paid' && (
+                            <input
+                              type="number"
+                              value={addCorkageFee}
+                              onChange={(e) => setAddCorkageFee(e.target.value)}
+                              placeholder="병당 금액 입력 (원)"
+                              min="0"
+                              className="mt-2 w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-300"
+                            />
                           )}
                         </div>
                       </>
                     )}
 
-                    {/* 바: 커버차지 */}
+                    {/* 바: 커버차지 금액 입력 */}
                     {addType === 'bar' && (
                       <div>
                         <p className="text-xs font-semibold text-gray-500 mb-2">커버차지</p>
-                        <div className="flex gap-2 mb-2">
-                          {(['none', 'exists'] as const).map((v) => (
-                            <button
-                              key={v}
-                              onClick={() => setAddCoverCharge(v)}
-                              className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                                addCoverCharge === v ? 'text-white border-transparent' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                              }`}
-                              style={addCoverCharge === v ? { backgroundColor: TYPE_COLOR.bar } : {}}
-                            >
-                              {v === 'none' ? '없음' : '있음'}
-                            </button>
-                          ))}
-                        </div>
-                        {addCoverCharge === 'exists' && (
-                          <input
-                            type="text"
-                            value={addCoverChargeText}
-                            onChange={(e) => setAddCoverChargeText(e.target.value)}
-                            placeholder="예: 10,000원"
-                            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
-                          />
-                        )}
+                        <input
+                          type="number"
+                          value={addCoverChargeAmount}
+                          onChange={(e) => setAddCoverChargeAmount(e.target.value)}
+                          placeholder="금액 입력 (원)"
+                          min="0"
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
+                        />
+                        <p className="text-[11px] text-gray-400 mt-1">0 또는 비워두면 커버차지 없음으로 처리됩니다</p>
                       </div>
                     )}
                   </div>
@@ -1800,7 +2143,10 @@ export default function NaverMap() {
                     <p className="text-sm text-center">조건에 맞는 장소가 없어요.</p>
                     <p className="text-xs text-gray-300 text-center">직접 추가해볼까요?</p>
                     <button
-                      onClick={() => setShowAddPanel(true)}
+                      onClick={() => {
+                        if (!currentUser) { showLoginRequired(); return }
+                        setShowAddPanel(true)
+                      }}
                       className="mt-1 px-5 py-2 rounded-xl text-xs font-bold text-white transition-opacity hover:opacity-80"
                       style={{ backgroundColor: MARKER_COLOR }}
                     >
@@ -1959,7 +2305,10 @@ export default function NaverMap() {
               {/* ─── + 장소 추가 버튼 (하단 고정) ─── */}
               <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100">
                 <button
-                  onClick={() => setShowAddPanel(true)}
+                  onClick={() => {
+                    if (!currentUser) { showLoginRequired(); return }
+                    setShowAddPanel(true)
+                  }}
                   className="btn-primary w-full py-4 text-body-md shadow-md hover:shadow-lg active:scale-[0.98]"
                   style={{ backgroundColor: MARKER_COLOR }}
                 >
@@ -2120,8 +2469,7 @@ export default function NaverMap() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleFavorite}
-                    disabled={isFaving}
-                    className={`flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60 flex-1 ${
+                    className={`flex items-center justify-center gap-2 active:scale-95 transition-all flex-1 ${
                       isFavorited ? 'btn-primary' : 'btn-secondary'
                     }`}
                     style={isFavorited ? { backgroundColor: MARKER_COLOR } : {}}
@@ -2160,69 +2508,33 @@ export default function NaverMap() {
                   </div>
                 )}
 
-                {/* 콜키지 정책 (식당 전용, 고정 토글) */}
-                {selectedPlace.type === 'restaurant' && (
+                {/* 콜키지 정보 (식당 전용, places 테이블에서 정적 표시) */}
+                {selectedPlace.type === 'restaurant' && selectedPlace.corkage_type && (
                   <div className="card p-3">
                     <p className="text-label font-semibold text-text-secondary mb-1.5">콜키지</p>
-                    <p className="text-caption text-text-disabled mb-2">클릭하여 +1 투표</p>
-                    {loadingTags ? (
-                      <p className="text-xs text-gray-400">로딩 중...</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {corkageTagsDisplay.map((tag) => {
-                          const myVote = votedTags.has(tag.label)
-                          return (
-                            <button
-                              key={tag.label}
-                              onClick={() => handleTagVote(tag.label, 'corkage')}
-                              className={`tag transition-all active:scale-95 flex items-center gap-1 ${
-                                myVote
-                                  ? 'tag-active'
-                                  : tag.count > 0
-                                    ? 'bg-brand-surface border-brand-border text-brand-primary'
-                                    : 'hover:bg-brand-surface hover:border-brand-border hover:text-brand-primary'
-                              }`}
-                            >
-                              <span>콜키지 {tag.label}</span>
-                              {tag.count > 0 && <span className={myVote ? 'opacity-80' : 'opacity-70'}>+{tag.count}</span>}
-                            </button>
-                          )
-                        })}
-                      </div>
+                    {selectedPlace.corkage_type === 'impossible' && (
+                      <span className="inline-flex items-center gap-1 tag">🚫 콜키지 불가</span>
+                    )}
+                    {selectedPlace.corkage_type === 'free' && (
+                      <span className="inline-flex items-center gap-1 tag tag-active">🍾 콜키지 프리</span>
+                    )}
+                    {selectedPlace.corkage_type === 'paid' && (
+                      <span className="inline-flex items-center gap-1 tag tag-active">
+                        🍾 {selectedPlace.corkage_fee && selectedPlace.corkage_fee > 0
+                          ? `콜키지 병당 ${selectedPlace.corkage_fee.toLocaleString()}원`
+                          : '콜키지 유료'}
+                      </span>
                     )}
                   </div>
                 )}
 
-                {/* 커버차지 정책 (바 전용, 고정 토글) */}
-                {selectedPlace.type === 'bar' && (
+                {/* 커버차지 정보 (바 전용, places 테이블에서 정적 표시) */}
+                {selectedPlace.type === 'bar' && selectedPlace.cover_charge != null && selectedPlace.cover_charge > 0 && (
                   <div className="card p-3">
                     <p className="text-label font-semibold text-text-secondary mb-1.5">커버차지</p>
-                    <p className="text-caption text-text-disabled mb-2">클릭하여 +1 투표</p>
-                    {loadingTags ? (
-                      <p className="text-xs text-gray-400">로딩 중...</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {coverChargeTagsDisplay.map((tag) => {
-                          const myVote = votedTags.has(tag.label)
-                          return (
-                            <button
-                              key={tag.label}
-                              onClick={() => handleTagVote(tag.label, 'cover_charge')}
-                              className={`tag transition-all active:scale-95 flex items-center gap-1 ${
-                                myVote
-                                  ? 'tag-active'
-                                  : tag.count > 0
-                                    ? 'bg-brand-surface border-brand-border text-brand-primary'
-                                    : 'hover:bg-brand-surface hover:border-brand-border hover:text-brand-primary'
-                              }`}
-                            >
-                              <span>커버차지 {tag.label}</span>
-                              {tag.count > 0 && <span className={myVote ? 'opacity-80' : 'opacity-70'}>+{tag.count}</span>}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
+                    <span className="inline-flex items-center gap-1 tag tag-active">
+                      🎵 커버차지 {selectedPlace.cover_charge.toLocaleString()}원
+                    </span>
                   </div>
                 )}
 
@@ -2374,6 +2686,9 @@ export default function NaverMap() {
                   />
                   <label
                     htmlFor="panel-photo-upload"
+                    onClick={(e) => {
+                      if (!currentUser) { e.preventDefault(); showLoginRequired() }
+                    }}
                     className={`w-full h-16 border-2 border-dashed rounded-xl flex items-center justify-center gap-2 transition-colors group cursor-pointer ${
                       isUploading
                         ? 'border-gray-200 text-gray-300 cursor-not-allowed'
@@ -2403,20 +2718,32 @@ export default function NaverMap() {
                             src={photo.url}
                             alt={`${photo.nickname}님의 사진`}
                             className="w-full h-full object-cover cursor-zoom-in"
-                            onClick={() => { if (!deletingPhotoId) setSelectedPhoto(photo.url) }}
+                            onClick={() => { if (!deletingPhotoId) setSelectedPhoto(photo) }}
                           />
                           <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-between">
                             <p className="text-[9px] text-white truncate">{photo.nickname}</p>
                           </div>
-                          {/* 삭제 버튼 (hover 시 노출) */}
-                          {deletingPhotoId !== photo.id && (
+                          {/* 삭제 버튼: 본인·익명 → 우상단 */}
+                          {deletingPhotoId !== photo.id && canDelete(photo.user_id) && (
                             <button
-                              onClick={() => handleDeletePhoto(photo.id)}
+                              onClick={() => handleDeletePhoto(photo)}
                               className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                               title="삭제"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                              </svg>
+                            </button>
+                          )}
+                          {/* 신고 버튼: 익명·타인 → 좌상단 */}
+                          {deletingPhotoId !== photo.id && canReport(photo.user_id) && (
+                            <button
+                              onClick={() => handleReport(photo.id, 'photo')}
+                              className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/60 text-orange-300 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="신고"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
                               </svg>
                             </button>
                           )}
@@ -2521,15 +2848,27 @@ export default function NaverMap() {
                                 </div>
                                 <p className="text-xs text-gray-600 mt-0.5 leading-snug">{c.content}</p>
                               </div>
-                              {/* 삭제 버튼 (optimistic 항목 제외) */}
-                              {!c.id.startsWith('__opt__') && deletingCommentId !== c.id && (
+                              {/* 삭제 버튼: 본인·익명 */}
+                              {!c.id.startsWith('__opt__') && deletingCommentId !== c.id && canDelete(c.user_id) && (
                                 <button
-                                  onClick={() => handleDeleteComment(c.id)}
+                                  onClick={() => handleDeleteComment(c)}
                                   className="shrink-0 self-start mt-0.5 p-1 rounded text-gray-300 hover:text-red-400 transition-colors"
                                   title="삭제"
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                                  </svg>
+                                </button>
+                              )}
+                              {/* 신고 버튼: 익명·타인 */}
+                              {!c.id.startsWith('__opt__') && deletingCommentId !== c.id && canReport(c.user_id) && (
+                                <button
+                                  onClick={() => handleReport(c.id, 'comment')}
+                                  className="shrink-0 self-start mt-0.5 p-1 rounded text-gray-200 hover:text-orange-400 transition-colors"
+                                  title="신고"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
                                   </svg>
                                 </button>
                               )}
@@ -2638,10 +2977,191 @@ export default function NaverMap() {
         </div>
       </div>
 
+      {/* ── 활동 내역 바텀 시트 ────────────────────────────────────────── */}
+      {showActivitySheet && (
+        <div className="fixed inset-0 z-50 flex flex-col" onClick={() => setShowActivitySheet(false)}>
+          {/* 배경 */}
+          <div className="flex-1 bg-black/40" />
+          {/* 시트 */}
+          <div
+            className="bg-white rounded-t-3xl max-h-[80dvh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 핸들 */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 pt-2 pb-3">
+              <h3 className="text-sm font-bold text-gray-900">내 활동 내역</h3>
+              <button
+                onClick={() => setShowActivitySheet(false)}
+                className="p-1 text-gray-400 hover:text-gray-700 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            {/* 탭 */}
+            <div className="flex border-b border-gray-100 px-5 gap-4">
+              {(['comment', 'photo'] as const).map((tab) => {
+                const count = activityList.filter((i) => i.type === tab).length
+                const label = tab === 'comment' ? '코멘트' : '사진'
+                const isActive = activityTab === tab
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActivityTab(tab)}
+                    className={`pb-2.5 text-xs font-semibold border-b-2 transition-colors ${isActive ? 'border-[#BF3A21] text-[#BF3A21]' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                  >
+                    {label}
+                    {!isLoadingActivity && (
+                      <span className={`ml-1 text-[10px] ${isActive ? 'text-[#BF3A21]/70' : 'text-gray-300'}`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            {/* 목록 */}
+            <div className="flex-1 overflow-y-auto">
+              {isLoadingActivity ? (
+                <p className="text-center text-sm text-gray-400 py-10">불러오는 중...</p>
+              ) : (() => {
+                const filtered = activityList.filter((i) => i.type === activityTab)
+                if (filtered.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+                      {activityTab === 'comment' ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                      )}
+                      <p className="text-sm">
+                        {activityTab === 'comment' ? '아직 남긴 코멘트가 없습니다' : '아직 업로드한 사진이 없습니다'}
+                      </p>
+                    </div>
+                  )
+                }
+                if (activityTab === 'comment') {
+                  return (
+                    <ul className="divide-y divide-gray-50">
+                      {filtered.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            className="w-full text-left px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                            onClick={() => { setShowActivitySheet(false); openDetail(item.place_id) }}
+                          >
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-xs font-bold" style={{ color: MARKER_COLOR }}>{item.place_name}</span>
+                              <span className="text-[10px] text-gray-400">
+                                {new Date(item.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-snug line-clamp-2">{item.content}</p>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                }
+                // 사진 탭: 3열 그리드
+                return (
+                  <div className="p-3 grid grid-cols-3 gap-1.5">
+                    {filtered.map((item) => (
+                      <button
+                        key={item.id}
+                        className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group"
+                        onClick={() => { setShowActivitySheet(false); openDetail(item.place_id) }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.url}
+                          alt={item.place_name}
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                        />
+                        {/* 장소명 오버레이 */}
+                        <div className="absolute bottom-0 inset-x-0 px-1.5 pb-1.5 pt-4"
+                             style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 100%)' }}>
+                          <p className="text-white text-[9px] font-semibold leading-tight line-clamp-1">{item.place_name}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
+              <div className="h-4" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 닉네임 설정 모달 (첫 로그인 시 중앙 팝업) ─────────────────── */}
+      {showNicknameModal && currentUser && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-6"
+             style={{ background: 'rgba(0,0,0,0.55)' }}>
+          <div
+            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="text-center space-y-1.5">
+              <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center text-white text-2xl font-bold"
+                   style={{ backgroundColor: MARKER_COLOR }}>
+                👤
+              </div>
+              <h2 className="text-base font-bold text-gray-900">닉네임을 설정해 주세요</h2>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                구글 계정의 실명은 앱에 표시되지 않습니다.<br/>
+                코멘트·사진에 사용될 닉네임을 직접 입력해 주세요.
+              </p>
+            </div>
+
+            {/* 입력 */}
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={nicknameSetupValue}
+                onChange={(e) => setNicknameSetupValue(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveNickname()}
+                placeholder="닉네임 입력 (최대 20자)"
+                maxLength={20}
+                autoFocus
+                className="w-full text-sm border-2 border-gray-200 rounded-2xl px-4 py-3 outline-none focus:border-[#BF3A21] transition-colors placeholder:text-gray-300"
+              />
+              <button
+                onClick={handleSaveNickname}
+                disabled={isSavingNickname || !nicknameSetupValue.trim()}
+                className="w-full py-3.5 rounded-2xl text-sm font-bold text-white disabled:opacity-40 active:scale-[0.98] transition-all"
+                style={{ backgroundColor: MARKER_COLOR }}
+              >
+                {isSavingNickname ? '저장 중...' : '닉네임 설정 완료'}
+              </button>
+            </div>
+
+            {/* 로그아웃 */}
+            <button
+              onClick={handleLogout}
+              className="w-full text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              로그아웃
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── 사진 라이트박스 모달 ───────────────────────────────────────── */}
       {selectedPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.92)' }}
           onClick={() => setSelectedPhoto(null)}
         >
           {/* 닫기 버튼 */}
@@ -2653,42 +3173,124 @@ export default function NaverMap() {
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          {/* 사진 (배경 클릭 전파 차단 없음 → 이미지 클릭도 닫힘) */}
+
+          {/* 사진 */}
           <img
-            src={selectedPhoto}
+            src={selectedPhoto.url}
             alt="사진 확대"
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            className="max-w-[90vw] max-h-[80vh] object-contain rounded-xl shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
+
+          {/* 사진 정보 + 삭제 버튼 행 */}
+          <div
+            className="mt-3 flex items-center gap-2.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 닉네임 · 날짜 pill */}
+            <div
+              className="flex items-center gap-2.5 px-4 py-2 rounded-full"
+              style={{ background: 'rgba(255,255,255,0.1)' }}
+            >
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                   style={{ backgroundColor: MARKER_COLOR }}>
+                {selectedPhoto.nickname[0]?.toUpperCase() ?? '?'}
+              </div>
+              <span className="text-white text-xs font-semibold">{selectedPhoto.nickname}</span>
+              <span className="text-white/50 text-[10px]">·</span>
+              <span className="text-white/70 text-[10px]">
+                {new Date(selectedPhoto.created_at).toLocaleDateString('ko-KR', {
+                  year: 'numeric', month: '2-digit', day: '2-digit',
+                }).replace(/\. /g, '.').replace(/\.$/, '')}
+              </span>
+            </div>
+
+            {/* 삭제 버튼 (익명·본인 글만 렌더링) */}
+            {canDelete(selectedPhoto.user_id) && (
+              <button
+                onClick={() => { setSelectedPhoto(null); handleDeletePhoto(selectedPhoto) }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-white/70 hover:text-white hover:bg-red-500/60 transition-colors text-xs font-semibold"
+                title="삭제"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                </svg>
+                삭제
+              </button>
+            )}
+            {/* 신고 버튼: 익명·타인 */}
+            {canReport(selectedPhoto.user_id) && (
+              <button
+                onClick={() => { setSelectedPhoto(null); handleReport(selectedPhoto.id, 'photo') }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-white/70 hover:text-white hover:bg-orange-500/60 transition-colors text-xs font-semibold"
+                title="신고"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                  <line x1="4" y1="22" x2="4" y2="15"/>
+                </svg>
+                신고
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── 우측 상단 통합 컨트롤 패널 ─────────────────────────────────── */}
-      <div className="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 w-[268px]">
+      {/* top-16(64px) on mobile = safe-area + 토글 py-3*2(24px) + 텍스트(20px) ≈ 44px + 여백 */}
+      <div className="absolute top-16 md:top-4 right-4 z-30 flex flex-col items-end gap-2 w-[268px]">
 
-        {/* 프로필 카드 */}
-        <div className={`panel w-full rounded-2xl overflow-hidden transition-shadow duration-300 ${(commentPasswordError || photoPasswordError || addCommentPasswordError) ? 'ring-2 ring-red-500' : ''}`}
-             style={{ boxShadow: (commentPasswordError || photoPasswordError || addCommentPasswordError) ? '0 0 0 3px rgba(239,68,68,0.25), 0 4px 24px rgba(0,0,0,0.13)' : '0 4px 24px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.08)' }}>
+        {/* 프로필 카드 – auth 상태에 따라 내부가 3단계로 변함 */}
+        <div className={`panel w-full rounded-2xl overflow-hidden transition-shadow duration-300 ${(!currentUser && (commentPasswordError || photoPasswordError || addCommentPasswordError)) ? 'ring-2 ring-red-500' : ''}`}
+             style={{ boxShadow: (!currentUser && (commentPasswordError || photoPasswordError || addCommentPasswordError)) ? '0 0 0 3px rgba(239,68,68,0.25), 0 4px 24px rgba(0,0,0,0.13)' : '0 4px 24px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.08)' }}>
           <button
             onClick={() => setShowProfileCard((v) => !v)}
             className="flex items-center gap-2.5 px-3.5 py-2.5 w-full hover:bg-gray-50 transition-colors"
           >
             {/* 아바타 */}
-            <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-bold"
-                 style={{ backgroundColor: myNickname ? MARKER_COLOR : '#d1d5db' }}>
-              {myNickname ? myNickname[0].toUpperCase() : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                </svg>
-              )}
-            </div>
+            {(() => {
+              const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
+              const avatarLabel = currentUser
+                ? (appNick ? appNick[0].toUpperCase() : '?')
+                : (myNickname ? myNickname[0].toUpperCase() : null)
+              const avatarBg = currentUser ? MARKER_COLOR : (myNickname ? MARKER_COLOR : '#d1d5db')
+              return (
+                <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-bold"
+                     style={{ backgroundColor: avatarBg }}>
+                  {avatarLabel ?? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    </svg>
+                  )}
+                </div>
+              )
+            })()}
             <div className="flex-1 text-left min-w-0">
-              <p className="text-xs font-bold text-gray-800 truncate leading-tight">
-                {myNickname || <span className="text-gray-400 font-normal">닉네임 설정 안 됨</span>}
-              </p>
-              <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
-                {myCode ? '🔒 비밀번호 설정됨' : '⚠︎ 비밀번호 미설정'}
-              </p>
+              {currentUser ? (() => {
+                const appNick = currentUser.user_metadata?.app_nickname as string | undefined
+                return appNick ? (
+                  <>
+                    <p className="text-xs font-bold text-gray-800 truncate leading-tight">{appNick}</p>
+                    <p className="text-[10px] text-gray-400 leading-tight mt-0.5">마이페이지</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-amber-600 truncate leading-tight">닉네임 설정 필요</p>
+                    <p className="text-[10px] text-gray-400 leading-tight mt-0.5">Google 로그인 완료</p>
+                  </>
+                )
+              })() : (
+                <>
+                  <p className="text-xs font-bold text-gray-800 truncate leading-tight">
+                    {myNickname || <span className="text-gray-400 font-normal">닉네임 설정 안 됨</span>}
+                  </p>
+                  <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+                    {myCode ? '🔒 비밀번호 설정됨' : '⚠︎ 비밀번호 미설정'}
+                  </p>
+                </>
+              )}
             </div>
             <svg className={`shrink-0 transition-transform duration-200 ${showProfileCard ? 'rotate-180' : ''}`}
                  xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
@@ -2698,50 +3300,132 @@ export default function NaverMap() {
           </button>
 
           {showProfileCard && (
-            <div className="px-3.5 pb-3.5 space-y-2 border-t border-gray-100 pt-2.5">
-              {/* 닉네임 */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-14 shrink-0">닉네임</span>
-                <input
-                  type="text"
-                  value={myNickname ?? ''}
-                  onChange={(e) => { setMyNickname(e.target.value); localStorage.setItem('tastamp_nickname', e.target.value) }}
-                  placeholder="익명"
-                  maxLength={20}
-                  className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none transition-colors focus:border-gray-400"
-                />
-              </div>
-              {/* 비밀번호 */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-14 shrink-0">비밀번호</span>
-                <div className="flex-1 relative min-w-0">
-                  <input
-                    type={showPasswordText ? 'text' : 'password'}
-                    value={myCode}
-                    onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false); setAddCommentPasswordError(false) } }}
-                    placeholder="콘텐츠 삭제 시 사용"
-                    maxLength={20}
-                    className={`w-full text-xs border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError || addCommentPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
-                  />
+            <div className="border-t border-gray-100">
+
+              {/* ══ 케이스 A: 비로그인 ══ 익명 닉네임/비밀번호 + 구글 로그인 버튼 */}
+              {!currentUser && (
+                <div className="px-3.5 pb-3.5 pt-2.5 space-y-2">
+                  {/* 닉네임 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-400 w-14 shrink-0">닉네임</span>
+                    <input
+                      type="text"
+                      value={myNickname ?? ''}
+                      onChange={(e) => { setMyNickname(e.target.value); localStorage.setItem('tastamp_nickname', e.target.value) }}
+                      placeholder="익명"
+                      maxLength={20}
+                      className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none transition-colors focus:border-gray-400"
+                    />
+                  </div>
+                  {/* 비밀번호 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-400 w-14 shrink-0">비밀번호</span>
+                    <div className="flex-1 relative min-w-0">
+                      <input
+                        type={showPasswordText ? 'text' : 'password'}
+                        value={myCode}
+                        onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false); setAddCommentPasswordError(false) } }}
+                        placeholder="콘텐츠 삭제 시 사용"
+                        maxLength={20}
+                        className={`w-full text-xs border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError || addCommentPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordText((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        {showPasswordText ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-gray-300 leading-relaxed">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
+                  {/* 구분선 + 구글 로그인 */}
+                  <div className="pt-1 border-t border-gray-100">
+                    <p className="text-[9px] text-gray-400 text-center mb-2">또는 계정으로 로그인</p>
+                    <button
+                      onClick={handleGoogleLogin}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 hover:bg-white hover:shadow-sm active:scale-[0.98] transition-all"
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      </svg>
+                      Google로 로그인
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ══ 케이스 B: 로그인 + 닉네임 미설정 ══ → 모달로 분리, 여기엔 간단한 안내만 */}
+              {currentUser && !(currentUser.user_metadata?.app_nickname as string | undefined) && (
+                <div className="px-3.5 pb-3 pt-2.5 space-y-2">
+                  <p className="text-[10px] text-amber-600 font-semibold">닉네임 설정이 필요합니다</p>
                   <button
-                    type="button"
-                    onClick={() => setShowPasswordText((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    onClick={() => setShowNicknameModal(true)}
+                    className="w-full py-2 rounded-xl text-xs font-bold text-white active:scale-[0.98] transition-all"
+                    style={{ backgroundColor: MARKER_COLOR }}
                   >
-                    {showPasswordText ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                        <line x1="1" y1="1" x2="23" y2="23"/>
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                      </svg>
-                    )}
+                    닉네임 설정하기
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-[10px] text-gray-400 hover:text-red-500 transition-colors py-0.5"
+                  >
+                    로그아웃
                   </button>
                 </div>
-              </div>
-              <p className="text-[9px] text-gray-300 leading-relaxed">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
+              )}
+
+              {/* ══ 케이스 C: 로그인 완료 (닉네임 설정됨) ══ 대시보드 */}
+              {currentUser && !!(currentUser.user_metadata?.app_nickname as string | undefined) && (
+                <div className="py-3 space-y-1">
+                  {/* 통계 그리드 */}
+                  <div className="px-3.5 pb-2">
+                    {isLoadingStats ? (
+                      <p className="text-[10px] text-gray-400 text-center py-2">불러오는 중...</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: '코멘트',  value: userStats?.comments ?? 0, onClick: async () => { setActivityTab('comment'); setShowActivitySheet(true); await loadActivity() } },
+                          { label: '사진',    value: userStats?.photos   ?? 0, onClick: async () => { setActivityTab('photo');   setShowActivitySheet(true); await loadActivity() } },
+                          { label: '즐겨찾기', value: favoritedIds.size,        onClick: () => setMainTab('favorites') },
+                        ].map(({ label, value, onClick }) => (
+                          <div
+                            key={label}
+                            onClick={onClick ? (e: React.MouseEvent) => { e.stopPropagation(); onClick() } : undefined}
+                            className="text-center bg-gray-50 rounded-xl py-2.5 cursor-pointer hover:bg-gray-100 active:scale-[0.97] transition-all border border-gray-100"
+                          >
+                            <p className="text-base font-bold text-gray-900">{value}</p>
+                            <p className="text-[9px] text-gray-400 mt-0.5">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* 구분선 + 로그아웃 */}
+                  <div className="px-3.5 pt-1.5">
+                    <div className="border-t border-gray-100 mb-2" />
+                    <button
+                      onClick={handleLogout}
+                      className="w-full py-2 text-xs font-semibold text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 transition-colors rounded-xl"
+                    >
+                      로그아웃
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </div>

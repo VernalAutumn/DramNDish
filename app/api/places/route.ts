@@ -25,7 +25,13 @@ async function geocode(address: string): Promise<{ lat: number; lng: number } | 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, address, type, naver_place_id, district, city, lat: bodyLat, lng: bodyLng, comment, nickname, code } = body
+    const {
+      name, address, type, naver_place_id, district, city,
+      lat: bodyLat, lng: bodyLng,
+      comment, nickname, code,
+      // 신규 컬럼
+      corkage_type, corkage_fee, cover_charge,
+    } = body
 
     // 코멘트가 있는데 비밀번호가 없으면 거부
     if (comment?.trim() && !code?.trim()) {
@@ -79,6 +85,15 @@ export async function POST(req: NextRequest) {
         district:       district       ?? null,
         city:           city           ?? null,
         region:         'domestic',
+        // 식당: 콜키지 정보
+        ...(type === 'restaurant' ? {
+          corkage_type: (['impossible', 'free', 'paid'].includes(corkage_type) ? corkage_type : 'impossible'),
+          corkage_fee:  typeof corkage_fee === 'number' ? corkage_fee : 0,
+        } : {}),
+        // 바: 커버차지 금액
+        ...(type === 'bar' ? {
+          cover_charge: typeof cover_charge === 'number' ? Math.max(0, cover_charge) : 0,
+        } : {}),
       })
       .select()
       .single()
