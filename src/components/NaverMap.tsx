@@ -155,7 +155,7 @@ const ADD_TYPE_OPTIONS = [
   { value: 'restaurant', label: '식당'   },
 ] as const
 
-function markerIcon(color = '#BF3A21', opacity = 1, favorited = false) {
+function markerIcon(color = '#BF3A21', opacity = 1, favorited = false, selected = false) {
   const starBadge = favorited ? `
     <div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;
       background:white;border-radius:50%;display:flex;align-items:center;
@@ -165,8 +165,12 @@ function markerIcon(color = '#BF3A21', opacity = 1, favorited = false) {
         <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>
       </svg>
     </div>` : ''
+  const scaleStyle = selected
+    ? 'transform:scale(1.3);transform-origin:center bottom;'
+    : ''
   return `
-    <div style="cursor:pointer;opacity:${opacity};transition:opacity 0.2s;position:relative;width:28px;height:36px;">
+    <div style="cursor:pointer;opacity:${opacity};transition:opacity 0.2s,transform 0.2s;
+      position:relative;width:28px;height:36px;${scaleStyle}">
       <svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
         <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 22 14 22S28 24.5 28 14C28 6.268 21.732 0 14 0z" fill="${color}"/>
         <circle cx="14" cy="14" r="6" fill="white"/>
@@ -226,7 +230,9 @@ export default function NaverMap() {
   const listScrollRef        = useRef<HTMLDivElement>(null)
   const savedScrollPosition  = useRef<number>(0)
   const favoritedIdsRef      = useRef<Set<string>>(new Set())
-  const activeIdRef          = useRef<string | null>(null)
+  const activeIdRef              = useRef<string | null>(null)
+  const selectedIdRef            = useRef<string | null>(null)
+  const updateMarkerHighlightRef = useRef<(id: string | null) => void>(() => {})
   const viewRef              = useRef<'list' | 'detail'>('list')
   const filteredPlaceIdsRef  = useRef<Set<string>>(new Set())
 
@@ -530,8 +536,27 @@ export default function NaverMap() {
     setFavCount(place.favorites_count ?? 0)
     setIsFavorited(favoritedIdsRef.current.has(place.id))  // ref → stale closure 방지
 
+    // 선택 마커 하이라이트 즉시 적용
+    updateMarkerHighlightRef.current(id)
+
     if (naverMapRef.current && window.naver?.maps) {
-      naverMapRef.current.panTo(new window.naver.maps.LatLng(place.lat, place.lng))
+      const map = naverMapRef.current
+      const pos = new window.naver.maps.LatLng(place.lat, place.lng)
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        // 모바일: peek 시트(40dvh)에 가려지지 않는 가시 영역 중앙으로 오프셋 팬
+        // 마커를 화면 상단 60dvh 영역의 중심(30% from top)에 배치
+        try {
+          const proj       = map.getProjection()
+          const markerOff  = proj.fromCoordToOffset(pos)
+          const peekH      = window.innerHeight * 0.4
+          const newOff     = new window.naver.maps.Point(markerOff.x, markerOff.y + peekH / 2)
+          map.panTo(proj.fromOffsetToCoord(newOff))
+        } catch {
+          map.panTo(pos)  // API 미지원 fallback
+        }
+      } else {
+        map.panTo(pos)
+      }
     }
 
     setSelectedTags([])
@@ -590,6 +615,44 @@ export default function NaverMap() {
   useEffect(() => { activeIdRef.current    = activeId },     [activeId])
   useEffect(() => { viewRef.current        = view },         [view])
   useEffect(() => { sheetStateRef.current  = sheetState },   [sheetState])
+
+  // ─── 마커 선택 강조 ──────────────────────────────────────────────────────
+  const updateMarkerHighlight = useCallback((selectedId: string | null) => {
+    if (typeof window === 'undefined' || !window.naver?.maps) return
+    selectedIdRef.current = selectedId
+    const filteredIds = filteredPlaceIdsRef.current
+    const hasFilter   = filteredIds.size < placesRef.current.length
+    placesRef.current.forEach((place) => {
+      const m = markersRef.current[place.id]
+      if (!m) return
+      const isSelected = selectedId === place.id
+      const dimmed     = selectedId !== null && !isSelected
+      const active     = !hasFilter || filteredIds.has(place.id)
+      // 필터 dim(0.2) > 선택 dim(0.35) > 정상(1) 우선순위
+      const opacity = !active ? 0.2 : dimmed ? 0.35 : 1
+      m.setIcon({
+        content: markerIcon(
+          TYPE_COLOR[place.type] ?? MARKER_COLOR,
+          opacity,
+          favoritedIdsRef.current.has(place.id),
+          isSelected,
+        ),
+        anchor: new window.naver.maps.Point(14, 36),
+      })
+      m.setZIndex(isSelected ? 200 : (active ? 100 : 10))
+    })
+  }, [])
+  useEffect(() => { updateMarkerHighlightRef.current = updateMarkerHighlight }, [updateMarkerHighlight])
+
+  // 리스트 뷰 복귀 시 하이라이트 초기화
+  useEffect(() => {
+    if (view === 'list') updateMarkerHighlightRef.current(null)
+  }, [view])
+
+  // 바텀 시트 완전 닫힘 시 하이라이트 초기화
+  useEffect(() => {
+    if (sheetState === 'closed') updateMarkerHighlightRef.current(null)
+  }, [sheetState])
 
   // ── 모바일 시트 transform 적용 (sheetState 변경 시) ─────────────────────
   useEffect(() => {
@@ -1452,6 +1515,8 @@ export default function NaverMap() {
           anchor:  new window.naver.maps.Point(14, 36),
         })
       })
+      // 선택 마커 강조 재적용 (zoom-in 상태에서 개별 마커가 보일 때)
+      updateMarkerHighlightRef.current(selectedIdRef.current)
       return
     }
 
@@ -1591,9 +1656,8 @@ export default function NaverMap() {
         if (currentInfoWindowRef.current === infoWindow) currentInfoWindowRef.current = null
       })
 
-      // ── click: 센터 이동 + 상세 패널 ───────────────────────────────────────
+      // ── click: 상세 패널 (오프셋 팬은 openDetail 내부에서 처리) ──────────
       window.naver.maps.Event.addListener(marker, 'click', () => {
-        map.setCenter(marker.getPosition())
         openDetailRef.current(place.id)
       })
 
