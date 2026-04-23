@@ -303,6 +303,14 @@ export default function NaverMap() {
   const [commentPasswordError,   setCommentPasswordError]   = useState(false)
   const [photoPasswordError,     setPhotoPasswordError]     = useState(false)
 
+  // ─── state: 콜키지/커버차지 인라인 수정 ───────────────────────────────────
+  const [showCorkageEdit,   setShowCorkageEdit]   = useState(false)
+  const [editCorkageType,   setEditCorkageType]   = useState<'impossible' | 'free' | 'paid'>('impossible')
+  const [editCorkageFee,    setEditCorkageFee]    = useState('')
+  const [showCoverEdit,     setShowCoverEdit]     = useState(false)
+  const [editCoverCharge,   setEditCoverCharge]   = useState('')
+  const [isSavingPlaceEdit, setIsSavingPlaceEdit] = useState(false)
+
   // ─── state: 우측 컨트롤 패널 ─────────────────────────────────────────────
   const [showProfileCard,  setShowProfileCard]  = useState(false)
   const [showPasswordText, setShowPasswordText] = useState(false)
@@ -584,6 +592,12 @@ export default function NaverMap() {
     setDeletingCommentId(null)
     setDeletingPhotoId(null)
     setDeleteInputCode('')
+    // 콜키지/커버차지 편집 상태 초기화
+    setShowCorkageEdit(false)
+    setEditCorkageType((place.corkage_type as 'impossible' | 'free' | 'paid') ?? 'impossible')
+    setEditCorkageFee(place.corkage_fee != null ? String(place.corkage_fee) : '')
+    setShowCoverEdit(false)
+    setEditCoverCharge(place.cover_charge != null ? String(place.cover_charge) : '')
     setLoadingTags(true)
 
     try {
@@ -816,6 +830,46 @@ export default function NaverMap() {
       })
     }
   }, [currentUser, showLoginRequired]) // favoritedIds 제거 → ref로 읽으므로 불필요
+
+  // ─── 콜키지 수정 저장 ────────────────────────────────────────────────────
+  const handleSaveCorkage = async () => {
+    if (!selectedPlace || !currentUser || isSavingPlaceEdit) return
+    setIsSavingPlaceEdit(true)
+    try {
+      const fee = editCorkageType === 'paid' ? (parseInt(editCorkageFee, 10) || 0) : 0
+      const res = await fetch(`/api/places/${selectedPlace.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ corkage_type: editCorkageType, corkage_fee: fee }),
+      })
+      if (res.ok) {
+        setSelectedPlace((prev) => prev ? { ...prev, corkage_type: editCorkageType, corkage_fee: fee } : prev)
+        setShowCorkageEdit(false)
+      }
+    } finally {
+      setIsSavingPlaceEdit(false)
+    }
+  }
+
+  // ─── 커버차지 수정 저장 ──────────────────────────────────────────────────
+  const handleSaveCoverCharge = async () => {
+    if (!selectedPlace || !currentUser || isSavingPlaceEdit) return
+    setIsSavingPlaceEdit(true)
+    try {
+      const amount = parseInt(editCoverCharge, 10) || 0
+      const res = await fetch(`/api/places/${selectedPlace.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cover_charge: amount }),
+      })
+      if (res.ok) {
+        setSelectedPlace((prev) => prev ? { ...prev, cover_charge: amount } : prev)
+        setShowCoverEdit(false)
+      }
+    } finally {
+      setIsSavingPlaceEdit(false)
+    }
+  }
 
   // ─── 즐겨찾기 토글 (상세 패널) ──────────────────────────────────────────
   const handleFavorite = async () => {
@@ -2740,33 +2794,126 @@ export default function NaverMap() {
                   </div>
                 )}
 
-                {/* 콜키지 정보 (식당 전용, places 테이블에서 정적 표시) */}
-                {selectedPlace.type === 'restaurant' && selectedPlace.corkage_type && (
+                {/* 콜키지 정보 (식당 전용) — 로그인 유저는 수정 가능 */}
+                {selectedPlace.type === 'restaurant' && (
                   <div className="card p-3">
-                    <p className="text-label font-semibold text-text-secondary mb-1.5">콜키지</p>
-                    {selectedPlace.corkage_type === 'impossible' && (
-                      <span className="inline-flex items-center gap-1 tag">🚫 콜키지 불가</span>
-                    )}
-                    {selectedPlace.corkage_type === 'free' && (
-                      <span className="inline-flex items-center gap-1 tag tag-active">🍾 콜키지 프리</span>
-                    )}
-                    {selectedPlace.corkage_type === 'paid' && (
-                      <span className="inline-flex items-center gap-1 tag tag-active">
-                        🍾 {selectedPlace.corkage_fee && selectedPlace.corkage_fee > 0
-                          ? `콜키지 병당 ${selectedPlace.corkage_fee.toLocaleString()}원`
-                          : '콜키지 유료'}
-                      </span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-label font-semibold text-text-secondary">콜키지</p>
+                      {currentUser && (
+                        <button
+                          onClick={() => setShowCorkageEdit((v) => !v)}
+                          className="text-[11px] font-semibold text-text-tertiary hover:text-brand-primary transition-colors"
+                        >
+                          {showCorkageEdit ? '취소' : '수정'}
+                        </button>
+                      )}
+                    </div>
+
+                    {!showCorkageEdit ? (
+                      <>
+                        {selectedPlace.corkage_type === 'impossible' && (
+                          <span className="inline-flex items-center gap-1 tag">🚫 콜키지 불가</span>
+                        )}
+                        {selectedPlace.corkage_type === 'free' && (
+                          <span className="inline-flex items-center gap-1 tag tag-active">🍾 콜키지 프리</span>
+                        )}
+                        {selectedPlace.corkage_type === 'paid' && (
+                          <span className="inline-flex items-center gap-1 tag tag-active">
+                            🍾 {selectedPlace.corkage_fee && selectedPlace.corkage_fee > 0
+                              ? `콜키지 병당 ${selectedPlace.corkage_fee.toLocaleString()}원`
+                              : '콜키지 유료'}
+                          </span>
+                        )}
+                        {!selectedPlace.corkage_type && (
+                          <span className="text-caption text-text-disabled">정보 없음{currentUser ? ' — 수정 버튼으로 입력하세요' : ''}</span>
+                        )}
+                      </>
+                    ) : (
+                      <div className="space-y-2 mt-1">
+                        <div className="flex gap-2">
+                          {(['impossible', 'free', 'paid'] as const).map((v) => (
+                            <button
+                              key={v}
+                              onClick={() => setEditCorkageType(v)}
+                              className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                editCorkageType === v
+                                  ? 'text-white border-transparent'
+                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                              }`}
+                              style={editCorkageType === v ? { backgroundColor: TYPE_COLOR.restaurant } : {}}
+                            >
+                              {v === 'impossible' ? '불가' : v === 'free' ? '프리' : '유료'}
+                            </button>
+                          ))}
+                        </div>
+                        {editCorkageType === 'paid' && (
+                          <input
+                            type="number"
+                            value={editCorkageFee}
+                            onChange={(e) => setEditCorkageFee(e.target.value)}
+                            placeholder="병당 금액 (원)"
+                            min="0"
+                            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-300"
+                          />
+                        )}
+                        <button
+                          onClick={handleSaveCorkage}
+                          disabled={isSavingPlaceEdit}
+                          className="btn-primary w-full py-2 text-xs disabled:opacity-50"
+                          style={{ backgroundColor: TYPE_COLOR.restaurant }}
+                        >
+                          {isSavingPlaceEdit ? '저장 중...' : '저장'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
 
-                {/* 커버차지 정보 (바 전용, places 테이블에서 정적 표시) */}
-                {selectedPlace.type === 'bar' && selectedPlace.cover_charge != null && selectedPlace.cover_charge > 0 && (
+                {/* 커버차지 정보 (바 전용) — 로그인 유저는 수정 가능 */}
+                {selectedPlace.type === 'bar' && (
                   <div className="card p-3">
-                    <p className="text-label font-semibold text-text-secondary mb-1.5">커버차지</p>
-                    <span className="inline-flex items-center gap-1 tag tag-active">
-                      🎵 커버차지 {selectedPlace.cover_charge.toLocaleString()}원
-                    </span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-label font-semibold text-text-secondary">커버차지</p>
+                      {currentUser && (
+                        <button
+                          onClick={() => setShowCoverEdit((v) => !v)}
+                          className="text-[11px] font-semibold text-text-tertiary hover:text-brand-primary transition-colors"
+                        >
+                          {showCoverEdit ? '취소' : '수정'}
+                        </button>
+                      )}
+                    </div>
+
+                    {!showCoverEdit ? (
+                      <>
+                        {selectedPlace.cover_charge != null && selectedPlace.cover_charge > 0 ? (
+                          <span className="inline-flex items-center gap-1 tag tag-active">
+                            🎵 커버차지 {selectedPlace.cover_charge.toLocaleString()}원
+                          </span>
+                        ) : (
+                          <span className="text-caption text-text-disabled">없음{currentUser ? ' — 수정 버튼으로 입력하세요' : ''}</span>
+                        )}
+                      </>
+                    ) : (
+                      <div className="space-y-2 mt-1">
+                        <input
+                          type="number"
+                          value={editCoverCharge}
+                          onChange={(e) => setEditCoverCharge(e.target.value)}
+                          placeholder="금액 입력 (원), 0이면 없음으로 처리"
+                          min="0"
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
+                        />
+                        <button
+                          onClick={handleSaveCoverCharge}
+                          disabled={isSavingPlaceEdit}
+                          className="btn-primary w-full py-2 text-xs disabled:opacity-50"
+                          style={{ backgroundColor: MARKER_COLOR }}
+                        >
+                          {isSavingPlaceEdit ? '저장 중...' : '저장'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

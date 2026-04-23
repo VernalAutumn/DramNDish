@@ -23,7 +23,7 @@ export async function PATCH(
     .from('places')
     .update(payload)
     .eq('id', id)
-    .select('id, name, address, type, district, naver_place_id, lat, lng, favorites_count')
+    .select('id, name, address, type, district, naver_place_id, lat, lng, favorites_count, corkage_type, corkage_fee, cover_charge')
     .single()
 
   if (error) {

@@ -55,6 +55,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ── 중복 등록 사전 차단: 동일 상호명 + 동일 주소 존재 여부 확인 ───────────
+    const { data: existing } = await supabase
+      .from('places')
+      .select('id')
+      .eq('name', name.trim())
+      .eq('address', address.trim())
+      .maybeSingle()
+
+    if (existing) {
+      return NextResponse.json(
+        { error: '이미 등록된 장소입니다.' },
+        { status: 409 }
+      )
+    }
+
     // 좌표가 이미 제공된 경우 Geocoding 생략
     let lat: number
     let lng: number
