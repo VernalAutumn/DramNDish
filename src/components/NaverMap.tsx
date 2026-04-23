@@ -1419,10 +1419,12 @@ export default function NaverMap() {
     return arr
   }, [comments, commentSort])
 
-  // ─── 전체 장소에서 고유 general 태그 추출 (카운트 합산 → 인기순) ─────────
+  // ─── 현재 선택된 대분류에 속하는 장소의 general 태그만 추출 (인기순) ───────
   const uniqueGeneralTags = useMemo(() => {
+    const { type } = filterState
+    const source = type === 'all' ? places : places.filter((p) => p.type === type)
     const countMap = new Map<string, number>()
-    places.forEach((p) => {
+    source.forEach((p) => {
       p.tags?.forEach((t) => {
         if (t.type === 'general') {
           countMap.set(t.label, (countMap.get(t.label) ?? 0) + (t.count ?? 1))
@@ -1432,7 +1434,12 @@ export default function NaverMap() {
     return Array.from(countMap.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([label]) => label)
-  }, [places])
+  }, [places, filterState.type])
+
+  // ─── 대분류 변경 시 태그 필터 초기화 (보이지 않는 태그 필터 잔존 방지) ───
+  useEffect(() => {
+    setSelectedTagFilters([])
+  }, [filterState.type])
 
   // ─── 필터링된 장소 목록 ─────────────────────────────────────────────────
   const filteredPlaces = useMemo(() => {
