@@ -2435,10 +2435,16 @@ export default function NaverMap() {
                     const dist        = userLocation ? haversine(userLocation.lat, userLocation.lng, place.lat, place.lng) : null
                     const accentColor = TYPE_COLOR[place.type] ?? MARKER_COLOR
                     const isActive    = activeId === place.id
-                    const policyBadges: string[] = []
-                    place.tags?.forEach((t) => {
-                      if (t.type === 'corkage' && t.label !== '불가') policyBadges.push('콜키지')
-                    })
+                    // places 테이블 직접 컬럼 기준 정책 배지
+                    const policyBadges: { label: string; color: string; bg: string }[] = []
+                    if (place.type === 'restaurant') {
+                      if (place.corkage_type === 'free')
+                        policyBadges.push({ label: '콜키지 프리', color: '#c2410c', bg: '#fff7ed' })
+                      else if (place.corkage_type === 'paid')
+                        policyBadges.push({ label: '콜키지 유료', color: '#b45309', bg: '#fffbeb' })
+                    }
+                    if (place.type === 'bar' && place.cover_charge != null && place.cover_charge > 0)
+                      policyBadges.push({ label: '커버차지', color: MARKER_COLOR, bg: `${MARKER_COLOR}15` })
                     return (
                       <li key={place.id}>
                         <button
@@ -2457,7 +2463,13 @@ export default function NaverMap() {
                               </span>
                             )}
                             {policyBadges.map((b) => (
-                              <span key={b} className="text-[10px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5">{b}</span>
+                              <span
+                                key={b.label}
+                                className="text-[10px] font-semibold rounded-full px-1.5 py-0.5"
+                                style={{ color: b.color, backgroundColor: b.bg }}
+                              >
+                                {b.label}
+                              </span>
                             ))}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
