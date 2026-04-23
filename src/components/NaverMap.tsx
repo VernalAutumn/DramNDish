@@ -1953,7 +1953,7 @@ export default function NaverMap() {
       {overseasToast && (
         <div
           className="fixed bottom-24 left-1/2 z-[200] flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
-          style={{ transform: 'translateX(-50%)', background: '#1C1412', color: '#fff', minWidth: '260px' }}
+          style={{ transform: 'translateX(-50%)', background: '#1C1412', color: '#fff' }}
         >
           <span className="text-sm font-medium flex-1">
             해외는 곧 추가 예정입니다! ✈️
