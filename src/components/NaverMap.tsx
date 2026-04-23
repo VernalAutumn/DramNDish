@@ -317,7 +317,8 @@ export default function NaverMap() {
   const [showFilterCard,   setShowFilterCard]   = useState(false)
 
   // ─── state: 검색/필터 ────────────────────────────────────────────────────
-  const [filterState,   setFilterState]   = useState<FilterState>(INITIAL_FILTER)
+  const [filterState,        setFilterState]        = useState<FilterState>(INITIAL_FILTER)
+  const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
   const [userLocation,  setUserLocation]  = useState<{ lat: number; lng: number } | null>(null)
   const [mapReady,      setMapReady]      = useState(false)
   const [accordionOpen, setAccordionOpen] = useState<Record<string, boolean>>({})
@@ -1418,11 +1419,26 @@ export default function NaverMap() {
     return arr
   }, [comments, commentSort])
 
+  // ─── 전체 장소에서 고유 general 태그 추출 (카운트 합산 → 인기순) ─────────
+  const uniqueGeneralTags = useMemo(() => {
+    const countMap = new Map<string, number>()
+    places.forEach((p) => {
+      p.tags?.forEach((t) => {
+        if (t.type === 'general') {
+          countMap.set(t.label, (countMap.get(t.label) ?? 0) + (t.count ?? 1))
+        }
+      })
+    })
+    return Array.from(countMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([label]) => label)
+  }, [places])
+
   // ─── 필터링된 장소 목록 ─────────────────────────────────────────────────
   const filteredPlaces = useMemo(() => {
     const { query, type, corkage, categories } = filterState
     const isFilterActive =
-      query.trim() !== '' || type !== 'all' || corkage || categories.length > 0
+      query.trim() !== '' || type !== 'all' || corkage || categories.length > 0 || selectedTagFilters.length > 0
 
     const result = places.filter((p) => {
       if (query.trim() && !p.name.toLowerCase().includes(query.trim().toLowerCase())) return false
@@ -1432,13 +1448,15 @@ export default function NaverMap() {
       if (corkage && !p.corkage_type) return false
       // 카테고리: 선택된 카테고리 중 하나라도 정확히 일치하는 태그가 있어야 함 (OR)
       if (categories.length > 0 && !p.tags?.some((t) => t.type === 'category' && categories.includes(t.label))) return false
+      // 태그 칩 필터: 선택된 태그 중 하나라도 포함하는 장소만 (OR)
+      if (selectedTagFilters.length > 0 && !p.tags?.some((t) => t.type === 'general' && selectedTagFilters.includes(t.label))) return false
       return true
     })
 
     // 필터가 활성화됐는데 0건 → 빈 배열 명시 반환 (전체 장소 반환 금지)
     if (isFilterActive && result.length === 0) return []
     return result
-  }, [places, filterState])
+  }, [places, filterState, selectedTagFilters])
 
   // ─── 거리순 정렬 + 지역별 그룹화 ────────────────────────────────────────
   const distanceSortedPlaces = useMemo(() => {
@@ -2407,6 +2425,43 @@ export default function NaverMap() {
                   </div>
                 )}
               </div>
+
+              {/* 태그 칩 필터 (가로 스크롤) */}
+              {uniqueGeneralTags.length > 0 && (
+                <div className="flex-shrink-0 overflow-x-auto mt-1.5" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div className="flex gap-1.5 px-4 pb-1" style={{ width: 'max-content' }}>
+                    {selectedTagFilters.length > 0 && (
+                      <button
+                        onClick={() => setSelectedTagFilters([])}
+                        className="flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold border border-gray-300 bg-gray-100 text-gray-500 transition-all active:scale-95"
+                      >
+                        ✕ 초기화
+                      </button>
+                    )}
+                    {uniqueGeneralTags.map((label) => {
+                      const isActive = selectedTagFilters.includes(label)
+                      return (
+                        <button
+                          key={label}
+                          onClick={() =>
+                            setSelectedTagFilters((prev) =>
+                              isActive ? prev.filter((t) => t !== label) : [...prev, label]
+                            )
+                          }
+                          className={`flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                            isActive
+                              ? 'text-white border-transparent'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                          }`}
+                          style={isActive ? { backgroundColor: MARKER_COLOR, borderColor: MARKER_COLOR } : {}}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div ref={listScrollRef} className="flex-1 overflow-y-auto mt-1">
                 {loading ? (
@@ -3827,7 +3882,7 @@ export default function NaverMap() {
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
             </svg>
             <span className="text-xs font-bold text-gray-700">필터</span>
-            {(filterState.type !== 'all' || filterState.corkage || filterState.categories.length > 0 || !!filterState.query) && (
+            {(filterState.type !== 'all' || filterState.corkage || filterState.categories.length > 0 || !!filterState.query || selectedTagFilters.length > 0) && (
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: MARKER_COLOR }} />
             )}
             <svg className={`ml-auto shrink-0 transition-transform duration-200 ${showFilterCard ? 'rotate-180' : ''}`}
