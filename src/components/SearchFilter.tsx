@@ -25,10 +25,16 @@ const PRIMARY = '#BF3A21'
 const ORANGE  = '#F97316'
 
 interface Props {
-  onChange: (f: FilterState) => void
+  onChange:       (f: FilterState) => void
+  /** 표시할 전체 태그 레이블 목록 */
+  tags?:          string[]
+  /** 현재 선택된 태그 레이블 목록 (상위에서 관리) */
+  selectedTags?:  string[]
+  /** 태그 선택 변경 콜백 */
+  onTagChange?:   (tags: string[]) => void
 }
 
-export default function SearchFilter({ onChange }: Props) {
+export default function SearchFilter({ onChange, tags, selectedTags, onTagChange }: Props) {
   const [query,      setQuery]      = useState('')
   const [type,       setType]       = useState<FilterState['type']>('all')
   const [corkage,    setCorkage]    = useState(false)
@@ -92,6 +98,45 @@ export default function SearchFilter({ onChange }: Props) {
           </button>
         ))}
       </div>
+
+      {/* 태그 칩 필터 (general 태그, 다중 선택 OR) */}
+      {tags && tags.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-gray-400 mb-1.5 uppercase tracking-wide">태그</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {selectedTags && selectedTags.length > 0 && (
+              <button
+                onClick={() => onTagChange?.([])}
+                className="flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold border border-gray-300 bg-gray-100 text-gray-500 transition-all active:scale-95"
+              >
+                ✕ 초기화
+              </button>
+            )}
+            {tags.map((label) => {
+              const isActive = selectedTags?.includes(label) ?? false
+              return (
+                <button
+                  key={label}
+                  onClick={() => {
+                    const next = isActive
+                      ? (selectedTags ?? []).filter((t) => t !== label)
+                      : [...(selectedTags ?? []), label]
+                    onTagChange?.(next)
+                  }}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                    isActive
+                      ? 'text-white border-transparent'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}
+                  style={isActive ? { backgroundColor: PRIMARY } : {}}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 식당 전용 필터 */}
       {type === 'restaurant' && (

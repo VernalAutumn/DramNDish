@@ -2365,84 +2365,6 @@ export default function NaverMap() {
           {/* 목록 탭 */}
           {view === 'list' && !showAddPanel && mainTab === 'list' && (
             <>
-              {/* ── 고정 헤더: 1열 대분류 + 2열 태그 칩 ───────────────────── */}
-              <div className="flex-shrink-0 border-b border-border-default bg-surface-base">
-
-                {/* 1열: 대분류 필터 (전체 / 리쿼샵 / 바 / 식당) */}
-                <div className="flex gap-1.5 px-4 pt-2.5 pb-2">
-                  {([
-                    { value: 'all',        label: '전체',   color: MARKER_COLOR },
-                    { value: 'whisky',     label: '리쿼샵', color: TYPE_COLOR.whisky },
-                    { value: 'bar',        label: '바',      color: TYPE_COLOR.bar },
-                    { value: 'restaurant', label: '식당',   color: TYPE_COLOR.restaurant },
-                  ] as const).map(({ value, label, color }) => {
-                    const isActive = filterState.type === value
-                    return (
-                      <button
-                        key={value}
-                        onClick={() =>
-                          setFilterState((prev) => ({
-                            ...prev,
-                            type: value,
-                            // 식당 전용 필터는 다른 종류 선택 시 초기화
-                            corkage:    value !== 'restaurant' ? false : prev.corkage,
-                            categories: value !== 'restaurant' ? []    : prev.categories,
-                          }))
-                        }
-                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
-                          isActive
-                            ? 'text-white border-transparent'
-                            : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                        }`}
-                        style={isActive ? { backgroundColor: color } : {}}
-                      >
-                        {label}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {/* 2열: 태그 칩 필터 (가로 스크롤) */}
-                {uniqueGeneralTags.length > 0 && (
-                  <div
-                    className="overflow-x-auto pb-2.5"
-                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                  >
-                    <div className="flex gap-1.5 px-4" style={{ width: 'max-content' }}>
-                      {selectedTagFilters.length > 0 && (
-                        <button
-                          onClick={() => setSelectedTagFilters([])}
-                          className="flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold border border-gray-300 bg-gray-100 text-gray-500 transition-all active:scale-95"
-                        >
-                          ✕ 초기화
-                        </button>
-                      )}
-                      {uniqueGeneralTags.map((label) => {
-                        const isActive = selectedTagFilters.includes(label)
-                        return (
-                          <button
-                            key={label}
-                            onClick={() =>
-                              setSelectedTagFilters((prev) =>
-                                isActive ? prev.filter((t) => t !== label) : [...prev, label]
-                              )
-                            }
-                            className={`flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
-                              isActive
-                                ? 'text-white border-transparent'
-                                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                            }`}
-                            style={isActive ? { backgroundColor: MARKER_COLOR } : {}}
-                          >
-                            {label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* 장소 수 + 뷰모드 탭 + 정렬 */}
               <div className="px-4 pt-2 pb-0 flex-shrink-0 space-y-2">
                 <div className="flex items-center justify-between">
@@ -3933,7 +3855,12 @@ export default function NaverMap() {
 
           {showFilterCard && (
             <div className="border-t border-gray-100">
-              <SearchFilter onChange={setFilterState} />
+              <SearchFilter
+                onChange={setFilterState}
+                tags={uniqueGeneralTags}
+                selectedTags={selectedTagFilters}
+                onTagChange={setSelectedTagFilters}
+              />
             </div>
           )}
         </div>
