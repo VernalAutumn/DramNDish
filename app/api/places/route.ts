@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { supabase } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
+
+async function getSessionUserId(): Promise<string | null> {
+  const cookieStore = await cookies()
+  const ssrClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(list) { list.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
+      },
+    },
+  )
+  const { data: { user } } = await ssrClient.auth.getUser()
+  return user?.id ?? null
+}
 
 const GEOCODE_URL = 'https://maps.apigw.ntruss.com/map-geocode/v2/geocode'
 
@@ -24,7 +42,7 @@ async function geocode(address: string): Promise<{ lat: number; lng: number } | 
 // POST: 장소 등록
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const [body, submittedBy] = await Promise.all([req.json(), getSessionUserId()])
     const {
       name, address, type, naver_place_id, district, city,
       lat: bodyLat, lng: bodyLng,
@@ -100,6 +118,7 @@ export async function POST(req: NextRequest) {
         district:       district       ?? null,
         city:           city           ?? null,
         region:         'domestic',
+        submitted_by:   submittedBy,
         // 식당: 콜키지 정보
         ...(type === 'restaurant' ? {
           corkage_type: (['impossible', 'free', 'paid'].includes(corkage_type) ? corkage_type : 'impossible'),
