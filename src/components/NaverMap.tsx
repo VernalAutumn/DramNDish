@@ -2148,6 +2148,10 @@ export default function NaverMap() {
                         {isSearching ? '검색 중' : '검색'}
                       </button>
                     </div>
+                    <p className="text-[10px] text-gray-400 leading-relaxed mt-1.5">
+                      네이버 검색 API 정책으로 인해 검색 결과는 최대 5개까지만 노출됩니다.<br />
+                      찾으시는 장소가 없다면 보다 정확한 검색어(예: 상호명 + 지점명) 또는 네이버 지도에서 확인 후 입력해 주세요.
+                    </p>
                   </div>
 
                   {/* 검색 결과 */}
