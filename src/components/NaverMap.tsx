@@ -3773,6 +3773,18 @@ export default function NaverMap() {
                       </svg>
                       Google로 로그인
                     </button>
+                    {/* 법적 고지 */}
+                    <p className="text-[9px] text-gray-400 leading-relaxed text-center mt-2">
+                      본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
+                      주류 판매·광고·중개를 목적으로 하지 않는 개인 운영 커뮤니티입니다.<br />
+                      <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-gray-600 transition-colors">이용약관</a>
+                      {' · '}
+                      <a href="https://tender-omelet-de8.notion.site/Privacy-Policy-34c39f83940e801389e6e957be1dfdd6?source=copy_link"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-gray-600 transition-colors">개인정보처리방침</a>
+                    </p>
                   </div>
                 </div>
               )}
