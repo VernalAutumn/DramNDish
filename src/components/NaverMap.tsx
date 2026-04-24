@@ -2161,10 +2161,14 @@ export default function NaverMap() {
                   )}
                   {searchResults.length > 0 && (
                     <ul className="space-y-1.5">
-                      {searchResults.map((r, i) => {
-                        const isSelected = selectedSearchResult?.naver_place_id === r.naver_place_id && selectedSearchResult?.name === r.name
+                      {searchResults.map((r) => {
+                        const resultKey = `${r.coords.lat}-${r.coords.lng}`
+                        const selectedKey = selectedSearchResult
+                          ? `${selectedSearchResult.coords.lat}-${selectedSearchResult.coords.lng}`
+                          : null
+                        const isSelected = resultKey === selectedKey
                         return (
-                          <li key={i}>
+                          <li key={resultKey}>
                             <button
                               onClick={() => {
                                 if (isSelected) {
