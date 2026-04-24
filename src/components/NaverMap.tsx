@@ -463,6 +463,7 @@ export default function NaverMap() {
   // ─── 로그아웃 ────────────────────────────────────────────────────────────
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut()
+    window.location.reload()
   }, [supabase])
 
   // ─── 닉네임 저장 (app_nickname 키 사용, 구글 본명과 분리) ────────────────
