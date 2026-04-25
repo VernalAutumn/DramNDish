@@ -207,6 +207,8 @@ export default function NaverMap() {
   const currentInfoWindowRef = useRef<any>(null)
   const openDetailRef        = useRef<(id: string, targetZoom?: number) => void>(() => {})
   const setupMarkersRef      = useRef<(map: any, data: Place[]) => void>(() => {})
+  // updateDisplay를 ref에 동기화 → zoom_changed/idle 리스너가 항상 최신 클로저 사용
+  const updateDisplayRef     = useRef<(map: any) => void>(() => {})
   const panelWrapperRef          = useRef<HTMLDivElement>(null)
   const touchStartY              = useRef(0)
   const sheetStateAtStart        = useRef<SheetState>('expanded')
@@ -345,6 +347,9 @@ export default function NaverMap() {
       .then((data: Place[]) => {
         setPlaces(data)
         placesRef.current = data
+        // 초기 로드: filteredPlaceIdsRef 를 전체 ID 로 초기화하여
+        // updateDisplay 가 hasFilter=false 로 올바르게 동작하도록 보장
+        filteredPlaceIdsRef.current = new Set(data.map((p) => p.id))
         setLoading(false)
         if (naverMapRef.current) setupMarkersRef.current(naverMapRef.current, data)
       })
@@ -645,7 +650,7 @@ export default function NaverMap() {
     if (typeof window === 'undefined' || !window.naver?.maps) return
     selectedIdRef.current = selectedId
     const filteredIds = filteredPlaceIdsRef.current
-    const hasFilter   = filteredIds.size < placesRef.current.length
+    const hasFilter   = filteredIds.size > 0 && filteredIds.size < placesRef.current.length
     placesRef.current.forEach((place) => {
       const m = markersRef.current[place.id]
       if (!m) return
@@ -1417,25 +1422,16 @@ export default function NaverMap() {
     [places, favoritedIds]
   )
 
-  // ─── 필터 변경 시 마커 아이콘 교체로 opacity 동기화 ────────────────────
+  // ─── 필터 변경 시 마커 표시 즉시 동기화 ─────────────────────────────────
+  // filterState / selectedTagFilters 가 바뀌는 즉시 → filteredPlaces 재산출 →
+  // filteredPlaceIdsRef 갱신 → updateDisplayRef.current 호출로 마커/클러스터 갱신.
+  // zoom 레벨·화면 너비에 관계없이 항상 실행.
   useEffect(() => {
+    if (!window.naver?.maps || !naverMapRef.current) return
     const ids = new Set(filteredPlaces.map((p) => p.id))
     filteredPlaceIdsRef.current = ids
-    const hasFilter = ids.size < placesRef.current.length
-    placesRef.current.forEach((place) => {
-      const marker = markersRef.current[place.id]
-      if (!marker) return
-      const active  = !hasFilter || ids.has(place.id)
-      const opacity = active ? 1 : 0.2
-      const zIndex  = active ? 100 : 10
-      marker.setZIndex(zIndex)
-      marker.setIcon({
-        content: markerIcon(TYPE_COLOR[place.type] ?? MARKER_COLOR, opacity, favoritedIdsRef.current.has(place.id)),
-        anchor:  new window.naver.maps.Point(14, 36),
-      })
-    })
-    if (naverMapRef.current) updateDisplay(naverMapRef.current)
-  }, [filteredPlaces]) // eslint-disable-line react-hooks/exhaustive-deps
+    updateDisplayRef.current(naverMapRef.current)
+  }, [filterState, selectedTagFilters, filteredPlaces])
 
   // ─── 클러스터 마커 제거 ──────────────────────────────────────────────────
   const clearClusterMarkers = () => {
@@ -1475,11 +1471,14 @@ export default function NaverMap() {
   }
 
   // ─── 줌 레벨에 따라 마커 / 클러스터 전환 ────────────────────────────────
+  // zoom · window.innerWidth 에 무관하게 filteredPlaceIdsRef 를 기준으로 필터 적용.
+  // filteredIds 가 비어 있으면(초기화 전) 전체 장소를 필터 없음으로 처리.
   const updateDisplay = (map: any) => {
     const zoom = map.getZoom()
     clearClusterMarkers()
     const filteredIds = filteredPlaceIdsRef.current
-    const hasFilter   = filteredIds.size < placesRef.current.length
+    // 빈 셋이면 필터 미적용(초기 로드 등), 실제 부분 필터일 때만 hasFilter=true
+    const hasFilter   = filteredIds.size > 0 && filteredIds.size < placesRef.current.length
 
     if (zoom >= CLUSTER_THRESHOLD) {
       // 줌 인: 모든 마커 표시, opacity만 분리
@@ -1665,8 +1664,9 @@ export default function NaverMap() {
     updateDisplay(map)
   }
 
-  // setupMarkers를 ref에 동기화
-  useEffect(() => { setupMarkersRef.current = setupMarkers })
+  // setupMarkers / updateDisplay를 ref에 동기화 (매 렌더마다 최신 클로저 유지)
+  useEffect(() => { setupMarkersRef.current  = setupMarkers  })
+  useEffect(() => { updateDisplayRef.current = updateDisplay })
 
   // ─── 내 위치(Blue Dot) 마커 ──────────────────────────────────────────────
   useEffect(() => {
@@ -1729,8 +1729,9 @@ export default function NaverMap() {
           zoom: 12,
         })
         naverMapRef.current = map
-        window.naver.maps.Event.addListener(map, 'zoom_changed', () => updateDisplay(map))
-        window.naver.maps.Event.addListener(map, 'idle',         () => updateDisplay(map))
+        // ref를 통해 호출 → 필터 등 상태 변경 후에도 항상 최신 updateDisplay 실행
+        window.naver.maps.Event.addListener(map, 'zoom_changed', () => updateDisplayRef.current(map))
+        window.naver.maps.Event.addListener(map, 'idle',         () => updateDisplayRef.current(map))
         // 모바일: 지도 빈 영역 클릭 시 Preview Card 닫기
         window.naver.maps.Event.addListener(map, 'click',        () => clearHomePeekRef.current())
         if (placesRef.current.length > 0) setupMarkersRef.current(map, placesRef.current)
