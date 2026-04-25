@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import Script from 'next/script'
+import { useSearchParams, useRouter } from 'next/navigation'
 import SearchFilter, { FilterState, INITIAL_FILTER } from './SearchFilter'
 import { createClient } from '@/src/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
@@ -217,7 +218,7 @@ export default function NaverMap() {
     if (!wrapper || typeof window === 'undefined' || window.innerWidth >= 768) return
     wrapper.style.transition = animate ? '' : 'none'
     const map: Record<SheetState, string> = {
-      closed:   'calc(100% - 3rem)',
+      closed:   '100%',            // 바텀 탭 네비 → 완전 숨김 (핸들바 불필요)
       peek:     'calc(100% - 40dvh)',
       expanded: '0px',
     }
@@ -225,7 +226,6 @@ export default function NaverMap() {
   })
   const paymentTagInputRef   = useRef<HTMLInputElement>(null)
   const generalTagInputRef   = useRef<HTMLInputElement>(null)
-  const addQueryRef          = useRef<HTMLInputElement>(null)
   const prevMapStateRef      = useRef<{ zoom: number; center: any } | null>(null)
   const myLocationMarkerRef  = useRef<any>(null)
   const listScrollRef        = useRef<HTMLDivElement>(null)
@@ -233,6 +233,7 @@ export default function NaverMap() {
   const favoritedIdsRef      = useRef<Set<string>>(new Set())
   const activeIdRef              = useRef<string | null>(null)
   const selectedIdRef            = useRef<string | null>(null)
+  const clearHomePeekRef         = useRef<() => void>(() => {})
   const updateMarkerHighlightRef = useRef<(id: string | null) => void>(() => {})
   const viewRef              = useRef<'list' | 'detail'>('list')
   const filteredPlaceIdsRef  = useRef<Set<string>>(new Set())
@@ -267,7 +268,9 @@ export default function NaverMap() {
   const [loginToast,    setLoginToast]    = useState(false)
   const [reportToast,   setReportToast]   = useState(false)
   const [overseasToast, setOverseasToast] = useState(false)
-  const supabase = useRef(createClient()).current
+  const supabase     = useRef(createClient()).current
+  const searchParams = useSearchParams()
+  const router       = useRouter()
 
   // ─── state: favorites ────────────────────────────────────────────────────
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set())
@@ -316,6 +319,10 @@ export default function NaverMap() {
   const [showPasswordText, setShowPasswordText] = useState(false)
   const [showFilterCard,   setShowFilterCard]   = useState(false)
 
+  // ─── state: 홈 Preview Card & 모바일 플로팅 필터 ──────────────────────────
+  const [homePeekPlace,    setHomePeekPlace]    = useState<Place | null>(null)
+  const [showMobileFilter, setShowMobileFilter] = useState(false)
+
   // ─── state: 검색/필터 ────────────────────────────────────────────────────
   const [filterState,        setFilterState]        = useState<FilterState>(INITIAL_FILTER)
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
@@ -327,25 +334,6 @@ export default function NaverMap() {
   const [favoriteSort,       setFavoriteSort]       = useState<'added' | 'name' | 'distance'>('added')
   const [isFavoriteEditMode, setIsFavoriteEditMode] = useState(false)
 
-  // ─── state: 장소 추가 ─────────────────────────────────────────────────────
-  const [showAddPanel,        setShowAddPanel]        = useState(false)
-  const [addType,             setAddType]             = useState<'whisky' | 'bar' | 'restaurant'>('whisky')
-  const [addQuery,            setAddQuery]            = useState('')
-  const [searchResults,       setSearchResults]       = useState<SearchResult[]>([])
-  const [isSearching,           setIsSearching]           = useState(false)
-  const [isAdding,              setIsAdding]              = useState<string | null>(null)
-  const [addError,              setAddError]              = useState<string | null>(null)
-  const [selectedSearchResult,  setSelectedSearchResult]  = useState<SearchResult | null>(null)
-  const [addPaymentTags,        setAddPaymentTags]        = useState<Set<string>>(new Set())
-  // 식당 전용
-  const [addCategory,         setAddCategory]         = useState('')
-  const [addCorkageType,      setAddCorkageType]      = useState<'impossible' | 'free' | 'paid'>('impossible')
-  const [addCorkageFee,       setAddCorkageFee]       = useState('')
-  // 바 전용
-  const [addCoverChargeAmount, setAddCoverChargeAmount] = useState('')
-  // 공통
-  const [addComment,             setAddComment]             = useState('')
-  const [addCommentPasswordError, setAddCommentPasswordError] = useState(false)
 
   // ─── 장소 불러오기 ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -373,6 +361,24 @@ export default function NaverMap() {
     if (savedNick) setMyNickname(savedNick)
     if (savedCode) setMyCode(savedCode)
   }, [])
+
+  // ─── 모바일 초기 패널 상태: 닫힌 상태로 시작 (지도만 보임) ──────────────
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSheetState('closed')
+      applyMobileTransformRef.current('closed', false)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  useEffect(() => {
+    // searchParam ?selected=id (리스트 페이지에서 장소 탭 시)
+    const selectedId = searchParams.get('selected')
+    if (selectedId) {
+      openDetailRef.current(selectedId)
+      router.replace('/')
+    }
+  }, [searchParams, router])
 
   // ─── 인증 상태 구독 + 즐겨찾기 DB 로드 ──────────────────────────────────
   // ※ 구글 본명(display_name / full_name)은 절대 myNickname에 쓰지 않는다.
@@ -502,19 +508,6 @@ export default function NaverMap() {
     if (showGeneralInput) generalTagInputRef.current?.focus()
   }, [showGeneralInput])
 
-  // ─── 장소 추가 패널 오픈 시 초기화 + 포커스 ─────────────────────────────
-  useEffect(() => {
-    if (showAddPanel) {
-      setAddQuery(''); setSearchResults([]); setAddError(null); setAddCommentPasswordError(false)
-      setSelectedSearchResult(null)
-      setAddPaymentTags(new Set())
-      setAddCategory('')
-      setAddCorkageType('impossible'); setAddCorkageFee('')
-      setAddCoverChargeAmount('')
-      setAddComment('')
-      setTimeout(() => addQueryRef.current?.focus(), 50)
-    }
-  }, [showAddPanel])
 
   // ─── window 전역 함수 (인포윈도우 onclick용) ─────────────────────────────
   useEffect(() => {
@@ -525,27 +518,44 @@ export default function NaverMap() {
 
   // ─── 상세 뷰 열기 ────────────────────────────────────────────────────────
   const openDetail = useCallback(async (id: string, targetZoom?: number) => {
-    if (activeIdRef.current === id && viewRef.current === 'detail') return
     const place = placesRef.current.find((p) => p.id === id)
     if (!place) return
+
+    // ── 모바일: Preview Card 표시, 무거운 바텀시트 패널 없음 ─────────────────
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setHomePeekPlace(place)
+      setActiveId(id)
+      updateMarkerHighlightRef.current(id)
+      if (naverMapRef.current && window.naver?.maps) {
+        const map = naverMapRef.current
+        const pos = new window.naver.maps.LatLng(place.lat, place.lng)
+        if (targetZoom !== undefined && map.getZoom() < targetZoom) {
+          map.setZoom(targetZoom, false)
+        }
+        try {
+          const proj      = map.getProjection()
+          const markerOff = proj.fromCoordToOffset(pos)
+          // 카드 높이(~80px) + 바텀탭(56px) + 여백 ≈ 화면의 약 20%만큼 위로 오프셋
+          const cardH = window.innerHeight * 0.2
+          const newOff = new window.naver.maps.Point(markerOff.x, markerOff.y + cardH / 2)
+          map.panTo(proj.fromOffsetToCoord(newOff))
+        } catch {
+          map.panTo(pos)
+        }
+      }
+      return  // ← PC 패널 로직 전혀 실행하지 않음
+    }
+
+    // ── PC: 기존 상세 패널 (좌측 플로팅) ────────────────────────────────────
+    if (activeIdRef.current === id && viewRef.current === 'detail') return
 
     savedScrollPosition.current = listScrollRef.current?.scrollTop ?? 0
     setSelectedPlace(place)
     setView('detail')
-    // 모바일: 마커 탭은 closed/peek/expanded 무관하게 항상 peek으로 통일
-    //   - closed → peek (시트 올라옴)
-    //   - peek   → peek (데이터만 교체, 높이 유지)
-    //   - expanded → peek (과도하게 가리지 않도록 살짝 내려옴)
-    // 데스크탑: 항상 expanded (패널 표시 보장)
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setSheetState('peek')
-    } else {
-      setSheetState('expanded')
-    }
-    setShowAddPanel(false)
+    setSheetState('expanded')
     setActiveId(id)
     setFavCount(place.favorites_count ?? 0)
-    setIsFavorited(favoritedIdsRef.current.has(place.id))  // ref → stale closure 방지
+    setIsFavorited(favoritedIdsRef.current.has(place.id))
 
     // 선택 마커 하이라이트 즉시 적용
     updateMarkerHighlightRef.current(id)
@@ -553,28 +563,10 @@ export default function NaverMap() {
     if (naverMapRef.current && window.naver?.maps) {
       const map = naverMapRef.current
       const pos = new window.naver.maps.LatLng(place.lat, place.lng)
-
-      // targetZoom이 지정되어 있고 현재 줌이 부족하면 먼저 줌 설정
-      // (projection 좌표계가 줌에 종속되므로 panTo 계산 전에 반드시 선행)
       if (targetZoom !== undefined && map.getZoom() < targetZoom) {
-        map.setZoom(targetZoom, false)  // false = 애니메이션 없이 즉시 적용
+        map.setZoom(targetZoom, false)
       }
-
-      if (typeof window !== 'undefined' && window.innerWidth < 768) {
-        // 모바일: peek 시트(40dvh)에 가려지지 않는 가시 영역 중앙으로 오프셋 팬
-        // 마커를 화면 상단 60dvh 영역의 중심(30% from top)에 배치
-        try {
-          const proj       = map.getProjection()
-          const markerOff  = proj.fromCoordToOffset(pos)
-          const peekH      = window.innerHeight * 0.4
-          const newOff     = new window.naver.maps.Point(markerOff.x, markerOff.y + peekH / 2)
-          map.panTo(proj.fromOffsetToCoord(newOff))
-        } catch {
-          map.panTo(pos)  // API 미지원 fallback
-        }
-      } else {
-        map.panTo(pos)
-      }
+      map.panTo(pos)
     }
 
     setSelectedTags([])
@@ -639,6 +631,14 @@ export default function NaverMap() {
   useEffect(() => { activeIdRef.current    = activeId },     [activeId])
   useEffect(() => { viewRef.current        = view },         [view])
   useEffect(() => { sheetStateRef.current  = sheetState },   [sheetState])
+
+  // clearHomePeekRef: 매 렌더마다 최신 클로저를 가리키도록 갱신
+  useEffect(() => {
+    clearHomePeekRef.current = () => {
+      setHomePeekPlace(null)
+      updateMarkerHighlightRef.current(null)
+    }
+  })
 
   // ─── 마커 선택 강조 ──────────────────────────────────────────────────────
   const updateMarkerHighlight = useCallback((selectedId: string | null) => {
@@ -1283,115 +1283,6 @@ export default function NaverMap() {
     }
   }
 
-  // ─── 네이버 검색 ─────────────────────────────────────────────────────────
-  const handleSearch = async () => {
-    const q = addQuery.trim()
-    if (!q || isSearching) return
-    setIsSearching(true)
-    setSearchResults([])
-    setAddError(null)
-    try {
-      const res = await fetch(`/api/naver/search?query=${encodeURIComponent(q)}`)
-      const data = await res.json()
-      if (!res.ok) {
-        setAddError(data.error ?? '검색 중 오류가 발생했습니다.')
-        return
-      }
-      if (!Array.isArray(data) || data.length === 0) {
-        setAddError('검색 결과가 없습니다.')
-        return
-      }
-      setSearchResults(data)
-    } catch {
-      setAddError('네트워크 오류가 발생했습니다.')
-    } finally {
-      setIsSearching(false)
-    }
-  }
-
-  // ─── 장소 등록 ───────────────────────────────────────────────────────────
-  const handleAddPlace = async (result: SearchResult) => {
-    if (isAdding) return
-    // 한 줄 평 입력 시 비밀번호 필수 (비로그인 사용자만)
-    if (!currentUser && addComment.trim() && !myCode) {
-      setAddCommentPasswordError(true)
-      setShowProfileCard(true)
-      alert('비밀번호를 설정해 주세요.')
-      return
-    }
-    setAddCommentPasswordError(false)
-    setIsAdding(result.name)
-    setAddError(null)
-    try {
-      const res = await fetch('/api/places', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name:            result.name,
-          address:         result.address,
-          type:            addType,
-          naver_place_id:  result.naver_place_id,
-          district:        result.district,
-          city:            result.city,
-          lat:             result.coords.lat,
-          lng:             result.coords.lng,
-          // 식당: 콜키지 (DB 직접 저장)
-          ...(addType === 'restaurant' ? {
-            corkage_type: addCorkageType,
-            corkage_fee:  addCorkageType === 'paid' ? (parseInt(addCorkageFee, 10) || 0) : 0,
-          } : {}),
-          // 바: 커버차지 금액 (DB 직접 저장)
-          ...(addType === 'bar' ? {
-            cover_charge: parseInt(addCoverChargeAmount, 10) || 0,
-          } : {}),
-          ...(addComment.trim() ? {
-            comment:  addComment.trim(),
-            nickname: (currentUser?.user_metadata?.app_nickname as string | undefined) || myNickname || '익명',
-            code:     myCode,
-          } : {}),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setAddError(data.error ?? '등록 중 오류가 발생했습니다.')
-        return
-      }
-
-      // 타입별 태그 등록 (payment: 리쿼샵 결제수단, category: 식당 대분류)
-      // corkage / cover_charge 는 places 테이블에 직접 저장되므로 태그로 등록하지 않음
-      const tagsToPost: { type: string; label: string }[] = []
-      if (addType === 'whisky') {
-        addPaymentTags.forEach((label) => tagsToPost.push({ type: 'payment', label }))
-      } else if (addType === 'restaurant') {
-        if (addCategory) tagsToPost.push({ type: 'category', label: addCategory })
-      }
-
-      const posts: Promise<any>[] = tagsToPost.map((tag) =>
-        fetch(`/api/places/${data.id}/tags`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(tag),
-        })
-      )
-      await Promise.all(posts)
-
-      // 목록 갱신 + 마커 업데이트
-      const listRes  = await fetch('/api/places')
-      const listData: Place[] = await listRes.json()
-      setPlaces(listData)
-      placesRef.current = listData
-      if (naverMapRef.current) setupMarkersRef.current(naverMapRef.current, listData)
-
-      // 추가 완료 후 상세 패널 오픈
-      setShowAddPanel(false)
-      setSelectedSearchResult(null)
-      await openDetail(data.id)
-    } catch {
-      setAddError('등록 중 네트워크 오류가 발생했습니다.')
-    } finally {
-      setIsAdding(null)
-    }
-  }
 
   // ─── 결제수단 태그 목록 ──────────────────────────────────────────────────
   const paymentTagsDisplay = useMemo(() => {
@@ -1828,6 +1719,8 @@ export default function NaverMap() {
   // ─── 지도 초기화 ─────────────────────────────────────────────────────────
   const initMap = () => {
     if (!mapRef.current) return
+    // 이미 지도가 초기화된 경우 중복 초기화 방지
+    if (naverMapRef.current) return
     let attempts = 0
     const tryInit = () => {
       if (window.naver?.maps) {
@@ -1838,6 +1731,8 @@ export default function NaverMap() {
         naverMapRef.current = map
         window.naver.maps.Event.addListener(map, 'zoom_changed', () => updateDisplay(map))
         window.naver.maps.Event.addListener(map, 'idle',         () => updateDisplay(map))
+        // 모바일: 지도 빈 영역 클릭 시 Preview Card 닫기
+        window.naver.maps.Event.addListener(map, 'click',        () => clearHomePeekRef.current())
         if (placesRef.current.length > 0) setupMarkersRef.current(map, placesRef.current)
         setMapReady(true)
         return
@@ -1856,6 +1751,15 @@ export default function NaverMap() {
       ? `https://map.naver.com/p/entry/place/${selectedPlace.naver_place_id}`
       : `https://map.naver.com/v5/search/${encodeURIComponent(selectedPlace.name)}`
     : '#'
+
+  // ─── Naver Maps 리마운트 대응: Script onLoad는 캐시된 경우 재실행 안 됨 ───
+  // 이미 window.naver.maps가 로드된 상태에서 컴포넌트가 언마운트/리마운트되면
+  // Script onLoad가 재발화하지 않으므로 mount 시점에 직접 initMap 호출
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.naver?.maps && !naverMapRef.current) {
+      initMap()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 렌더 ────────────────────────────────────────────────────────────────
   // ─── 구글 로그인 핸들러 (토스트에서 사용) ───────────────────────────────
@@ -2043,27 +1947,66 @@ export default function NaverMap() {
         />
       </div>
 
+      {/* ── 📱 모바일 플로팅 필터 (md 미만만 표시) ─────────────────────── */}
+      <div
+        className="md:hidden absolute z-20 flex flex-col items-start"
+        style={{ top: 'calc(44px + env(safe-area-inset-top, 0px) + 8px)', left: '16px' }}
+      >
+        <button
+          onClick={() => setShowMobileFilter((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shadow-md border transition-all ${
+            showMobileFilter
+              ? 'bg-gray-900 text-white border-gray-900'
+              : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+          </svg>
+          필터
+          {(filterState.type !== 'all' || filterState.corkage || filterState.categories.length > 0 || !!filterState.query || selectedTagFilters.length > 0) && (
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: showMobileFilter ? '#fff' : MARKER_COLOR }}
+            />
+          )}
+        </button>
+
+        {showMobileFilter && (
+          <div className="mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 w-72">
+            <SearchFilter
+              onChange={setFilterState}
+              tags={uniqueGeneralTags}
+              selectedTags={selectedTagFilters}
+              onTagChange={setSelectedTagFilters}
+              hideSearch
+            />
+          </div>
+        )}
+      </div>
+
       {/* ── 플로팅 패널 ────────────────────────────────────────────────── */}
       {/* 모바일: bottom sheet / 데스크탑: 좌측 플로팅 패널 */}
       <div
         ref={panelWrapperRef}
         className={[
-          // 모바일 z-40 / 데스크탑 md:z-20
-          'z-40 md:z-20 transition-all duration-300 ease-in-out',
-          // 모바일: 바텀 시트 (transform은 JS applyMobileTransform으로 제어)
-          'fixed bottom-0 left-0 right-0 overscroll-y-none',
+          // 모바일: hidden (DOM에 없음), 데스크탑: flex col
+          'hidden md:flex md:flex-col',
+          // 데스크탑 z / 트랜지션
+          'md:z-20 transition-all duration-300 ease-in-out',
           // 데스크탑: 좌측 플로팅 패널
           'md:absolute md:top-4 md:bottom-4 md:left-4 md:right-auto md:w-[360px]',
-          // 데스크탑 전용 translate-x (모바일에서는 JS inline style이 우선)
+          // 데스크탑 전용 translate-x
           sheetState !== 'closed'
             ? 'md:translate-x-0 md:pointer-events-auto'
             : 'md:translate-y-0 md:-translate-x-[calc(100%+1rem)] md:pointer-events-none',
         ].join(' ')}
         style={{ willChange: 'transform' }}
       >
-        {/* 모바일 핸들바 + 전체 상단 스와이프 영역 */}
+        {/* 모바일 핸들바 */}
         <div
-          className="md:hidden flex justify-center items-center py-2 cursor-pointer bg-white rounded-t-2xl touch-none select-none"
+          className="md:hidden flex justify-center items-center py-2 flex-shrink-0 cursor-pointer"
           onClick={() => {
             const pos = listScrollRef.current?.scrollTop ?? 0
             const next: SheetState = sheetState !== 'closed' ? 'closed' : 'expanded'
@@ -2082,8 +2025,9 @@ export default function NaverMap() {
           style={{ height: 'calc(100dvh - env(safe-area-inset-top, 0px) - 64px)' }}
         >
 
+
           {/* 목록 / 즐겨찾기 탭 헤더 */}
-          {view === 'list' && !showAddPanel && (
+          {view === 'list' && (
             <div className="flex border-b border-border-default flex-shrink-0">
               {([
                 { key: 'list',      label: '목록' },
@@ -2104,282 +2048,10 @@ export default function NaverMap() {
             </div>
           )}
 
-          {/* ── 장소 추가 패널 ─────────────────────────────────────────── */}
-          {view === 'list' && showAddPanel && (
-            <>
-              {/* 헤더 */}
-              <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center gap-2">
-                <button
-                  onClick={() => setShowAddPanel(false)}
-                  className="shrink-0 p-1 -ml-1 text-gray-500 hover:text-gray-800 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M15 18l-6-6 6-6"/>
-                  </svg>
-                </button>
-                <h2 className="text-sm font-bold text-gray-900">장소 추가</h2>
-              </div>
 
-              {/* ── 수직형 폼 ───────────────────────────────────────────── */}
-              <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
-
-                {/* ① 검색 */}
-                <div className="px-4 py-4 space-y-3">
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">상호명 검색</p>
-
-                  {/* 상호명 검색 */}
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-2">검색 후 결과를 선택하세요</p>
-                    <div className="flex gap-2">
-                      <input
-                        ref={addQueryRef}
-                        type="text"
-                        value={addQuery}
-                        onChange={(e) => setAddQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                        placeholder="상호명 입력 후 검색"
-                        className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none transition-colors focus:border-gray-400"
-                      />
-                      <button
-                        onClick={handleSearch}
-                        disabled={!addQuery.trim() || isSearching}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40 transition-opacity"
-                        style={{ backgroundColor: MARKER_COLOR }}
-                      >
-                        {isSearching ? '검색 중' : '검색'}
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-gray-400 leading-relaxed mt-1.5">
-                      네이버 검색 API 정책으로 인해 검색 결과는 최대 5개까지만 노출됩니다.<br />
-                      찾으시는 장소가 없다면 보다 정확한 검색어(예: 상호명 + 지점명) 또는 네이버 지도에서 확인 후 입력해 주세요.
-                    </p>
-                  </div>
-
-                  {/* 검색 결과 */}
-                  {addError && (
-                    <p className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{addError}</p>
-                  )}
-                  {searchResults.length > 0 && (
-                    <ul className="space-y-1.5">
-                      {searchResults.map((r) => {
-                        const resultKey = `${r.coords.lat}-${r.coords.lng}`
-                        const selectedKey = selectedSearchResult
-                          ? `${selectedSearchResult.coords.lat}-${selectedSearchResult.coords.lng}`
-                          : null
-                        const isSelected = resultKey === selectedKey
-                        return (
-                          <li key={resultKey}>
-                            <button
-                              onClick={() => {
-                                if (isSelected) {
-                                  setSelectedSearchResult(null)
-                                } else {
-                                  setSelectedSearchResult(r)
-                                  const inferred = inferTypeFromCategory(r.category)
-                                  if (inferred) {
-                                    setAddType(inferred)
-                                    setAddPaymentTags(new Set())
-                                    setAddCategory('')
-                                    setAddCorkageType('impossible'); setAddCorkageFee('')
-                                    setAddCoverChargeAmount('')
-                                  }
-                                }
-                              }}
-                              className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${
-                                isSelected
-                                  ? 'border-current bg-red-50'
-                                  : 'border-gray-100 hover:border-gray-300 hover:bg-gray-50'
-                              }`}
-                              style={isSelected ? { borderColor: TYPE_COLOR[addType] } : {}}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={`text-sm font-semibold truncate ${isSelected ? 'text-[#BF3A21]' : 'text-gray-800'}`}>{r.name}</span>
-                                {isSelected && (
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TYPE_COLOR[addType]} strokeWidth="2.5" className="shrink-0">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                  </svg>
-                                )}
-                              </div>
-                              {r.category && (
-                                <p className="text-[11px] text-gray-400 mt-0.5 truncate">{r.category}</p>
-                              )}
-                              <p className="text-xs text-gray-400 mt-0.5 truncate">{r.address}</p>
-                            </button>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                </div>
-
-                {/* ② 분류 선택 + 도메인 특화 정보 */}
-                {selectedSearchResult && (
-                  <div className="px-4 py-4 space-y-4">
-
-                    {/* 분류 선택 (결과 선택 후 표시, 자동 추론으로 pre-fill) */}
-                    <div>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">분류</p>
-                      <div className="flex gap-2">
-                        {ADD_TYPE_OPTIONS.map(({ value, label }) => (
-                          <button
-                            key={value}
-                            onClick={() => {
-                              setAddType(value)
-                              setAddPaymentTags(new Set())
-                              setAddCategory('')
-                              setAddCorkageType('impossible'); setAddCorkageFee('')
-                              setAddCoverChargeAmount('')
-                            }}
-                            className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
-                              addType === value
-                                ? 'text-white border-transparent'
-                                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                            }`}
-                            style={addType === value ? { backgroundColor: TYPE_COLOR[value] } : {}}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                      {addType === 'whisky' ? '결제 수단' : addType === 'restaurant' ? '식당 정보' : '바 정보'}
-                    </p>
-
-                    {/* 리쿼샵: 결제수단 */}
-                    {addType === 'whisky' && (
-                      <div>
-                        <p className="text-caption text-text-disabled mb-2">해당하는 결제 수단을 선택하세요</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {DEFAULT_PAYMENT_TAGS.map((tag) => {
-                            const active = addPaymentTags.has(tag)
-                            return (
-                              <button
-                                key={tag}
-                                onClick={() => setAddPaymentTags((prev) => {
-                                  const next = new Set(prev)
-                                  active ? next.delete(tag) : next.add(tag)
-                                  return next
-                                })}
-                                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                                  active ? 'text-white border-transparent' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                                }`}
-                                style={active ? { backgroundColor: TYPE_COLOR.whisky } : {}}
-                              >
-                                {tag}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 식당: 대분류 + 콜키지 */}
-                    {addType === 'restaurant' && (
-                      <>
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 mb-2">대분류 <span className="text-red-400">*</span></p>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {FOOD_CATEGORIES.map((cat) => (
-                              <button
-                                key={cat}
-                                onClick={() => setAddCategory(cat)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                                  addCategory === cat ? 'text-white border-transparent' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                                }`}
-                                style={addCategory === cat ? { backgroundColor: TYPE_COLOR.restaurant } : {}}
-                              >
-                                {cat}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 mb-2">콜키지</p>
-                          <div className="flex gap-2">
-                            {(['impossible', 'free', 'paid'] as const).map((v) => (
-                              <button
-                                key={v}
-                                onClick={() => setAddCorkageType(v)}
-                                className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                                  addCorkageType === v ? 'text-white border-transparent' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                                }`}
-                                style={addCorkageType === v ? { backgroundColor: TYPE_COLOR.restaurant } : {}}
-                              >
-                                {v === 'impossible' ? '불가' : v === 'free' ? '프리' : '유료'}
-                              </button>
-                            ))}
-                          </div>
-                          {addCorkageType === 'paid' && (
-                            <input
-                              type="number"
-                              value={addCorkageFee}
-                              onChange={(e) => setAddCorkageFee(e.target.value)}
-                              placeholder="병당 금액 입력 (원)"
-                              min="0"
-                              className="mt-2 w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-300"
-                            />
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {/* 바: 커버차지 금액 입력 */}
-                    {addType === 'bar' && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-2">커버차지</p>
-                        <input
-                          type="number"
-                          value={addCoverChargeAmount}
-                          onChange={(e) => setAddCoverChargeAmount(e.target.value)}
-                          placeholder="금액 입력 (원)"
-                          min="0"
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
-                        />
-                        <p className="text-[11px] text-gray-400 mt-1">0 또는 비워두면 커버차지 없음으로 처리됩니다</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ③ 코멘트 */}
-                {selectedSearchResult && (
-                  <div className="px-4 py-4 space-y-3">
-                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">한 줄 평</p>
-                    <textarea
-                      value={addComment}
-                      onChange={(e) => { setAddComment(e.target.value); if (e.target.value.trim() === '' || myCode) setAddCommentPasswordError(false) }}
-                      placeholder="이 장소에 대한 첫 코멘트를 남겨보세요 (선택, 200자 이내)"
-                      maxLength={200}
-                      rows={3}
-                      className={`w-full text-sm border rounded-xl px-3 py-2 outline-none resize-none transition-colors placeholder:text-gray-300 ${addCommentPasswordError ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
-                    />
-                    {addCommentPasswordError && (
-                      <p className="text-xs text-red-500 -mt-1.5">우측 상단 프로필에서 비밀번호를 먼저 설정해 주세요.</p>
-                    )}
-                  </div>
-                )}
-
-                {/* ④ 등록 버튼 */}
-                {selectedSearchResult && (
-                  <div className="px-4 py-4">
-                    <button
-                      onClick={() => handleAddPlace(selectedSearchResult)}
-                      disabled={!!isAdding}
-                      className="btn-primary w-full py-3 disabled:opacity-50 active:scale-[0.98]"
-                      style={{ backgroundColor: TYPE_COLOR[addType] }}
-                    >
-                      {isAdding ? '등록 중...' : `"${selectedSearchResult.name}" 등록`}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
 
           {/* 목록 탭 */}
-          {view === 'list' && !showAddPanel && mainTab === 'list' && (
+          {view === 'list' && mainTab === 'list' && (
             <>
               {/* 장소 수 + 뷰모드 탭 + 정렬 */}
               <div className="px-4 pt-2 pb-0 flex-shrink-0 space-y-2">
@@ -2451,10 +2123,7 @@ export default function NaverMap() {
                     <p className="text-sm text-center">조건에 맞는 장소가 없어요.</p>
                     <p className="text-xs text-gray-300 text-center">직접 추가해볼까요?</p>
                     <button
-                      onClick={() => {
-                        if (!currentUser) { showLoginRequired(); return }
-                        setShowAddPanel(true)
-                      }}
+                      onClick={() => router.push('/add')}
                       className="mt-1 px-5 py-2 rounded-xl text-xs font-bold text-white transition-opacity hover:opacity-80"
                       style={{ backgroundColor: MARKER_COLOR }}
                     >
@@ -2625,10 +2294,7 @@ export default function NaverMap() {
               {/* ─── + 장소 추가 버튼 (하단 고정) ─── */}
               <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100">
                 <button
-                  onClick={() => {
-                    if (!currentUser) { showLoginRequired(); return }
-                    setShowAddPanel(true)
-                  }}
+                  onClick={() => router.push('/add')}
                   className="btn-primary w-full py-4 text-body-md shadow-md hover:shadow-lg active:scale-[0.98]"
                   style={{ backgroundColor: MARKER_COLOR }}
                 >
@@ -2642,7 +2308,7 @@ export default function NaverMap() {
           )}
 
           {/* 즐겨찾기 탭 */}
-          {view === 'list' && !showAddPanel && mainTab === 'favorites' && (
+          {view === 'list' && mainTab === 'favorites' && (
             <div className="flex-1 overflow-y-auto flex flex-col">
               {favoritedIds.size === 0 ? (
                 <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 pb-10">
@@ -3657,13 +3323,83 @@ export default function NaverMap() {
         </div>
       )}
 
-      {/* ── 우측 상단 통합 컨트롤 패널 ─────────────────────────────────── */}
-      {/* top-16(64px) on mobile = safe-area + 토글 py-3*2(24px) + 텍스트(20px) ≈ 44px + 여백 */}
-      <div className="absolute top-16 md:top-4 right-4 z-30 flex flex-col items-end gap-2 w-[268px]">
+      {/* ── 📱 모바일 Preview Card (마커 탭 시 바텀탭 바로 위에 표시) ──── */}
+      {homePeekPlace && (
+        <div
+          className="md:hidden fixed left-4 right-4 z-[55] bg-white rounded-2xl shadow-xl border border-gray-100 flex items-center gap-3 px-4 py-3"
+          style={{ bottom: 'calc(56px + env(safe-area-inset-bottom, 0px) + 10px)' }}
+        >
+          {/* 타입 도트 */}
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white text-[11px] font-bold"
+            style={{ backgroundColor: TYPE_COLOR[homePeekPlace.type] ?? MARKER_COLOR }}
+          >
+            {TYPE_LABEL[homePeekPlace.type]?.[0] ?? '?'}
+          </div>
+
+          {/* 이름 + 타입 */}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-gray-900 truncate leading-tight">
+              {homePeekPlace.name}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {TYPE_LABEL[homePeekPlace.type] ?? homePeekPlace.type}
+              {homePeekPlace.district && ` · ${homePeekPlace.district}`}
+            </p>
+          </div>
+
+          {/* 즐겨찾기 버튼 */}
+          <button
+            onClick={(e) => { e.stopPropagation(); handleFavoriteById(homePeekPlace.id) }}
+            className="shrink-0 p-2 rounded-full transition-all active:scale-95"
+            aria-label="즐겨찾기"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+              fill={favoritedIds.has(homePeekPlace.id) ? MARKER_COLOR : 'none'}
+              stroke={MARKER_COLOR} strokeWidth="2">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          </button>
+
+          {/* 네이버 지도 링크 */}
+          <a
+            href={homePeekPlace.naver_place_id
+              ? `https://map.naver.com/p/entry/place/${homePeekPlace.naver_place_id}`
+              : `https://map.naver.com/v5/search/${encodeURIComponent(homePeekPlace.name)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 p-2 rounded-full transition-all active:scale-95 text-gray-400 hover:text-gray-600"
+            aria-label="네이버 지도에서 보기"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+
+          {/* 상세 보기 (ChevronRight) */}
+          <button
+            onClick={() => router.push(`/place/${homePeekPlace.id}`)}
+            className="shrink-0 p-2 rounded-full transition-all active:scale-95 text-gray-400 hover:text-gray-700"
+            aria-label="상세 보기"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* ── 우측 상단 통합 컨트롤 패널 (모바일: 바텀탭으로 대체하여 숨김) ── */}
+      <div className="hidden md:flex absolute md:top-4 right-4 z-30 flex-col items-end gap-2 w-[268px]">
 
         {/* 프로필 카드 – auth 상태에 따라 내부가 3단계로 변함 */}
-        <div className={`panel w-full rounded-2xl overflow-hidden transition-shadow duration-300 ${(!currentUser && (commentPasswordError || photoPasswordError || addCommentPasswordError)) ? 'ring-2 ring-red-500' : ''}`}
-             style={{ boxShadow: (!currentUser && (commentPasswordError || photoPasswordError || addCommentPasswordError)) ? '0 0 0 3px rgba(239,68,68,0.25), 0 4px 24px rgba(0,0,0,0.13)' : '0 4px 24px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.08)' }}>
+        <div className={`panel w-full rounded-2xl overflow-hidden transition-shadow duration-300 ${(!currentUser && (commentPasswordError || photoPasswordError)) ? 'ring-2 ring-red-500' : ''}`}
+             style={{ boxShadow: (!currentUser && (commentPasswordError || photoPasswordError)) ? '0 0 0 3px rgba(239,68,68,0.25), 0 4px 24px rgba(0,0,0,0.13)' : '0 4px 24px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.08)' }}>
           <button
             onClick={() => setShowProfileCard((v) => !v)}
             className="flex items-center gap-2.5 px-3.5 py-2.5 w-full hover:bg-gray-50 transition-colors"
@@ -3743,10 +3479,10 @@ export default function NaverMap() {
                       <input
                         type={showPasswordText ? 'text' : 'password'}
                         value={myCode}
-                        onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false); setAddCommentPasswordError(false) } }}
+                        onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false) } }}
                         placeholder="콘텐츠 삭제 시 사용"
                         maxLength={20}
-                        className={`w-full text-xs border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError || addCommentPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
+                        className={`w-full text-xs border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
                       />
                       <button
                         type="button"
@@ -3908,17 +3644,14 @@ export default function NaverMap() {
       </div>
       {/* /플로팅 패널 외부 래퍼 */}
 
-
       {/* ── GPS 플로팅 액션 버튼 ────────────────────────────────────────── */}
-      {/* 모바일: fixed z-50 → 바텀시트(z-40)/피크카드(z-[55]) 계층에서 항상 가시 */}
       <button
         onClick={() => {
           requestUserLocation((loc) => {
             naverMapRef.current?.panTo(new window.naver.maps.LatLng(loc.lat, loc.lng))
           })
         }}
-        className="fixed right-4 z-50 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-all md:absolute md:z-20 md:bottom-6 md:right-6"
-        style={{ bottom: 72 }}
+        className="fixed right-4 bottom-4 z-50 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-all md:absolute md:z-20 md:bottom-6 md:right-6"
         title="내 위치로 이동"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"

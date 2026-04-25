@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
+import BottomNav from "@/src/components/BottomNav";
 import "./globals.css";
 
 const pretendard = localFont({
@@ -53,6 +54,7 @@ export default function RootLayout({
     <html lang="ko" className={`${pretendard.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
         {children}
+        <BottomNav />
         <Analytics />
       </body>
     </html>

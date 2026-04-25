@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/src/lib/supabase'
 
+// GET: 단일 장소 조회
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const { data, error } = await supabase
+    .from('places')
+    .select('*, tags(id, type, label, count)')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  if (!data) {
+    return NextResponse.json({ error: '장소를 찾을 수 없습니다.' }, { status: 404 })
+  }
+  return NextResponse.json(data)
+}
+
 // PATCH: 관리자 장소 정보 수정
 export async function PATCH(
   req: NextRequest,

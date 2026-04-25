@@ -32,9 +32,11 @@ interface Props {
   selectedTags?:  string[]
   /** 태그 선택 변경 콜백 */
   onTagChange?:   (tags: string[]) => void
+  /** true 이면 텍스트 검색 입력창 숨김 (모바일 플로팅 필터 등에서 사용) */
+  hideSearch?:    boolean
 }
 
-export default function SearchFilter({ onChange, tags, selectedTags, onTagChange }: Props) {
+export default function SearchFilter({ onChange, tags, selectedTags, onTagChange, hideSearch }: Props) {
   const [query,      setQuery]      = useState('')
   const [type,       setType]       = useState<FilterState['type']>('all')
   const [corkage,    setCorkage]    = useState(false)
@@ -73,13 +75,15 @@ export default function SearchFilter({ onChange, tags, selectedTags, onTagChange
     <div className="px-3.5 pt-2.5 pb-3 space-y-2.5">
 
       {/* 텍스트 검색 */}
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); emit({ query: e.target.value }) }}
-        placeholder="장소명 검색"
-        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none transition-colors focus:border-gray-400 placeholder:text-gray-300"
-      />
+      {!hideSearch && (
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); emit({ query: e.target.value }) }}
+          placeholder="장소명 검색"
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none transition-colors focus:border-gray-400 placeholder:text-gray-300"
+        />
+      )}
 
       {/* 종류 필터 칩 */}
       <div className="flex gap-1.5">
