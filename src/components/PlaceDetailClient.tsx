@@ -72,6 +72,7 @@ export default function PlaceDetailClient({
 
   // ─── 인증 상태 ───────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [loginToast,  setLoginToast]  = useState(false)
 
   // ─── 즐겨찾기 ────────────────────────────────────────────────────────────
@@ -117,21 +118,28 @@ export default function PlaceDetailClient({
   // ─── 인증 구독 + 즐겨찾기 상태 초기화 ──────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setCurrentUser(session?.user ?? null)
-      if (session?.user) {
+      const user = session?.user ?? null
+      setCurrentUser(user)
+      setAuthLoading(false)
+      if (user) {
+        // 로그인 유저 닉네임을 폼에 미리 세팅
+        const appNick = user.user_metadata?.app_nickname as string | undefined
+        if (appNick) setNickname(appNick)
         // DB에서 이 장소의 즐겨찾기 여부 조회
         const { data } = await supabase
           .from('favorites')
           .select('id')
-          .eq('user_id', session.user.id)
+          .eq('user_id', user.id)
           .eq('place_id', place.id)
           .maybeSingle()
         setIsFavorited(!!data)
       }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user ?? null)
-      if (!session?.user) setIsFavorited(false)
+      const user = session?.user ?? null
+      setCurrentUser(user)
+      setAuthLoading(false)
+      if (!user) setIsFavorited(false)
     })
     return () => subscription.unsubscribe()
   }, [place.id, supabase])
@@ -596,11 +604,27 @@ export default function PlaceDetailClient({
 
           {/* 작성 폼 */}
           <div className="mb-5 space-y-2">
-            <input type="text" value={nickname} onChange={e => setNickname(e.target.value)}
-              placeholder="닉네임" maxLength={20} disabled={!!myNickname}
-              className={`w-full text-sm border rounded-xl px-3 py-2 outline-none transition-colors ${
-                myNickname ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
-                           : 'border-gray-200 focus:border-[#BF3A21]'}`}/>
+            {/* 닉네임: 인증 확인 중 숨김 / 로그인 유저는 배지 / 비로그인은 입력 */}
+            {!authLoading && (
+              currentUser ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                    style={{ backgroundColor: BRAND }}>
+                    {((currentUser.user_metadata?.app_nickname as string | undefined) || '?')[0].toUpperCase()}
+                  </div>
+                  <span className="text-xs text-gray-600 font-medium">
+                    {(currentUser.user_metadata?.app_nickname as string | undefined) || '익명'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
+                </div>
+              ) : (
+                <input type="text" value={nickname} onChange={e => setNickname(e.target.value)}
+                  placeholder="닉네임" maxLength={20} disabled={!!myNickname}
+                  className={`w-full text-sm border rounded-xl px-3 py-2 outline-none transition-colors ${
+                    myNickname ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                               : 'border-gray-200 focus:border-[#BF3A21]'}`}/>
+              )
+            )}
             <textarea value={commentContent} onChange={e => setCommentContent(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) handleSubmitComment() }}
               placeholder="이 장소에 대한 코멘트를 남겨보세요 (최대 200자)"

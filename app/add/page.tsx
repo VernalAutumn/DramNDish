@@ -51,6 +51,7 @@ export default function AddPage() {
 
   // ── 인증 ─────────────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [myNickname,  setMyNickname]  = useState<string | null>(null)
   const [myCode,      setMyCode]      = useState('')
 
@@ -62,9 +63,11 @@ export default function AddPage() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setCurrentUser(session?.user ?? null)
+      setAuthLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setCurrentUser(session?.user ?? null)
+      setAuthLoading(false)
     })
     return () => subscription.unsubscribe()
   }, [supabase])
@@ -457,28 +460,30 @@ export default function AddPage() {
           <div className="px-4 py-4 space-y-3">
             <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">한 줄 평</p>
 
-            {/* 닉네임: 로그인 유저는 자동 표시(숨김), 비로그인은 입력 가능 */}
-            {currentUser ? (
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-                  style={{ backgroundColor: '#BF3A21' }}>
-                  {((currentUser.user_metadata?.app_nickname as string | undefined) || '?')[0].toUpperCase()}
+            {/* 닉네임: 인증 확인 중에는 숨김, 로그인 유저는 배지, 비로그인은 입력 */}
+            {!authLoading && (
+              currentUser ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                    style={{ backgroundColor: '#BF3A21' }}>
+                    {((currentUser.user_metadata?.app_nickname as string | undefined) || '?')[0].toUpperCase()}
+                  </div>
+                  <span className="text-xs text-gray-600 font-medium">
+                    {(currentUser.user_metadata?.app_nickname as string | undefined) || '익명'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
                 </div>
-                <span className="text-xs text-gray-600 font-medium">
-                  {(currentUser.user_metadata?.app_nickname as string | undefined) || '익명'}
-                </span>
-                <span className="text-[10px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
-              </div>
-            ) : (
-              <div>
-                <input
-                  type="text"
-                  value={myNickname ?? ''}
-                  onChange={(e) => setMyNickname(e.target.value)}
-                  placeholder="닉네임 (선택)"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
-                />
-              </div>
+              ) : (
+                <div>
+                  <input
+                    type="text"
+                    value={myNickname ?? ''}
+                    onChange={(e) => setMyNickname(e.target.value)}
+                    placeholder="닉네임 (선택)"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
+                  />
+                </div>
+              )
             )}
 
             <textarea
@@ -498,7 +503,7 @@ export default function AddPage() {
             />
 
             {/* 비로그인: 비밀번호 입력 (코멘트 남길 때만 필요) */}
-            {!currentUser && addComment.trim() && (
+            {!authLoading && !currentUser && addComment.trim() && (
               <div>
                 <input
                   type="password"
