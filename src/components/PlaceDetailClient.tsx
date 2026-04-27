@@ -95,8 +95,9 @@ export default function PlaceDetailClient({
   const tagInputRef = useRef<HTMLInputElement>(null)
 
   // ─── 사진 ────────────────────────────────────────────────────────────────
-  const [photos,      setPhotos]      = useState<PlacePhoto[]>([])
-  const [isUploading, setIsUploading] = useState(false)
+  const [photos,        setPhotos]        = useState<PlacePhoto[]>([])
+  const [isUploading,   setIsUploading]   = useState(false)
+  const [lightboxPhoto, setLightboxPhoto] = useState<PlacePhoto | null>(null)
 
   // ─── 코멘트 ──────────────────────────────────────────────────────────────
   const [comments,        setComments]        = useState<Comment[]>([])
@@ -383,6 +384,40 @@ export default function PlaceDetailClient({
         </div>
       )}
 
+      {/* ── 사진 Lightbox 모달 ────────────────────────────────────────────── */}
+      {lightboxPhoto && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center"
+          onClick={() => setLightboxPhoto(null)}
+        >
+          {/* 닫기 버튼 */}
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 transition-colors text-white"
+            onClick={(e) => { e.stopPropagation(); setLightboxPhoto(null) }}
+            aria-label="닫기"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          {/* 이미지 */}
+          <img
+            src={lightboxPhoto.url}
+            alt={`${lightboxPhoto.nickname}님의 사진`}
+            className="max-w-full max-h-full object-contain select-none"
+            style={{ maxHeight: 'calc(100dvh - 96px)' }}
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          {/* 닉네임 */}
+          <p className="mt-3 text-white/60 text-xs font-medium">
+            {lightboxPhoto.nickname}
+          </p>
+        </div>
+      )}
+
       {/* 헤더 */}
       <header className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
         <Link href="/" className="shrink-0 p-1 -ml-1 text-gray-500 hover:text-gray-800 transition-colors">
@@ -587,7 +622,10 @@ export default function PlaceDetailClient({
           {photos.length > 0 && (
             <div className="mt-4 grid grid-cols-3 gap-1.5">
               {photos.map(photo => (
-                <div key={photo.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
+                <div key={photo.id}
+                  className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 cursor-pointer active:opacity-80 transition-opacity"
+                  onClick={() => setLightboxPhoto(photo)}
+                >
                   <img src={photo.url} alt={`${photo.nickname}님의 사진`} className="w-full h-full object-cover"/>
                   <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent">
                     <p className="text-[10px] text-white font-medium truncate">{photo.nickname}</p>
