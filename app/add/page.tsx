@@ -117,6 +117,7 @@ export default function AddPage() {
   // ── 장소 등록 ────────────────────────────────────────────────────────────
   const handleAddPlace = useCallback(async (result: SearchResult) => {
     if (isAdding) return
+    // 비로그인 유저가 코멘트를 남기려는데 비밀번호가 없는 경우에만 차단
     if (!currentUser && addComment.trim() && !myCode) {
       setAddCommentPasswordError(true)
       alert('비밀번호를 설정해 주세요.')
@@ -125,6 +126,14 @@ export default function AddPage() {
     setAddCommentPasswordError(false)
     setIsAdding(result.name)
     setAddError(null)
+
+    // 닉네임: 로그인 유저는 app_nickname 우선, 없으면 '익명'
+    //         비로그인 유저는 myNickname(localStorage) 사용
+    const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
+    const resolvedNickname = currentUser
+      ? (appNick || '익명')
+      : (myNickname || '익명')
+
     try {
       const res = await fetch('/api/places', {
         method: 'POST',
@@ -138,6 +147,8 @@ export default function AddPage() {
           city:           result.city,
           lat:            result.coords.lat,
           lng:            result.coords.lng,
+          // 로그인 유저 ID를 submitted_by 로 항상 전달
+          ...(currentUser ? { submitted_by: currentUser.id } : {}),
           ...(addType === 'restaurant' ? {
             corkage_type: addCorkageType,
             corkage_fee:  addCorkageType === 'paid' ? (parseInt(addCorkageFee, 10) || 0) : 0,
@@ -147,8 +158,9 @@ export default function AddPage() {
           } : {}),
           ...(addComment.trim() ? {
             comment:  addComment.trim(),
-            nickname: (currentUser?.user_metadata?.app_nickname as string | undefined) || myNickname || '익명',
-            code:     myCode,
+            nickname: resolvedNickname,
+            // 로그인 유저는 code 불필요, 비로그인은 myCode 전달
+            ...(currentUser ? {} : { code: myCode }),
           } : {}),
         }),
       })
@@ -444,6 +456,31 @@ export default function AddPage() {
         {selectedSearchResult && (
           <div className="px-4 py-4 space-y-3">
             <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">한 줄 평</p>
+
+            {/* 닉네임: 로그인 유저는 자동 표시(숨김), 비로그인은 입력 가능 */}
+            {currentUser ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                  style={{ backgroundColor: '#BF3A21' }}>
+                  {((currentUser.user_metadata?.app_nickname as string | undefined) || '?')[0].toUpperCase()}
+                </div>
+                <span className="text-xs text-gray-600 font-medium">
+                  {(currentUser.user_metadata?.app_nickname as string | undefined) || '익명'}
+                </span>
+                <span className="text-[10px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  value={myNickname ?? ''}
+                  onChange={(e) => setMyNickname(e.target.value)}
+                  placeholder="닉네임 (선택)"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400"
+                />
+              </div>
+            )}
+
             <textarea
               value={addComment}
               onChange={(e) => {
@@ -459,9 +496,31 @@ export default function AddPage() {
                   : 'border-gray-200 focus:border-gray-400'
               }`}
             />
+
+            {/* 비로그인: 비밀번호 입력 (코멘트 남길 때만 필요) */}
+            {!currentUser && addComment.trim() && (
+              <div>
+                <input
+                  type="password"
+                  value={myCode}
+                  onChange={(e) => {
+                    setMyCode(e.target.value)
+                    if (e.target.value) setAddCommentPasswordError(false)
+                  }}
+                  placeholder="코멘트 삭제용 비밀번호 (선택)"
+                  maxLength={20}
+                  className={`w-full text-sm border rounded-xl px-3 py-2 outline-none transition-colors ${
+                    addCommentPasswordError
+                      ? 'border-red-400 focus:border-red-500'
+                      : 'border-gray-200 focus:border-gray-400'
+                  }`}
+                />
+              </div>
+            )}
+
             {addCommentPasswordError && (
               <p className="text-xs text-red-500 -mt-1.5">
-                마이페이지에서 비밀번호를 먼저 설정해 주세요.
+                비밀번호를 입력해 주세요.
               </p>
             )}
           </div>

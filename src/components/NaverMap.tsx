@@ -3327,8 +3327,9 @@ export default function NaverMap() {
       {/* ── 📱 모바일 Preview Card (마커 탭 시 바텀탭 바로 위에 표시) ──── */}
       {homePeekPlace && (
         <div
-          className="md:hidden fixed left-4 right-4 z-[55] bg-white rounded-2xl shadow-xl border border-gray-100 flex items-center gap-3 px-4 py-3"
+          className="md:hidden fixed left-4 right-4 z-[55] bg-white rounded-2xl shadow-xl border border-gray-100 flex items-center gap-3 px-4 py-3 cursor-pointer active:bg-gray-50 transition-colors"
           style={{ bottom: 'calc(56px + env(safe-area-inset-bottom, 0px) + 10px)' }}
+          onClick={() => router.push(`/place/${homePeekPlace.id}`)}
         >
           {/* 타입 도트 */}
           <div
@@ -3382,16 +3383,15 @@ export default function NaverMap() {
           </a>
 
           {/* 상세 보기 (ChevronRight) */}
-          <button
-            onClick={() => router.push(`/place/${homePeekPlace.id}`)}
-            className="shrink-0 p-2 rounded-full transition-all active:scale-95 text-gray-400 hover:text-gray-700"
-            aria-label="상세 보기"
+          <span
+            className="shrink-0 p-2 rounded-full text-gray-400"
+            aria-hidden="true"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M9 18l6-6-6-6"/>
             </svg>
-          </button>
+          </span>
         </div>
       )}
 

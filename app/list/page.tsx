@@ -44,6 +44,8 @@ const TYPE_COLOR: Record<string, string> = {
   restaurant: '#F97316',
 }
 
+const TYPE_ORDER = ['whisky', 'bar', 'restaurant']
+
 function formatDist(km: number) {
   return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`
 }
@@ -60,6 +62,88 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+// 주소에서 두 번째 토큰(구/군 단위) 추출
+function extractGu(address: string): string {
+  const parts = address.split(' ').filter(Boolean)
+  return parts[1] ?? parts[0] ?? '기타'
+}
+
+// ── 공통: 장소 카드 렌더 ─────────────────────────────────────────────────
+function PlaceRow({
+  place,
+  favIds,
+  userLocation,
+  onClick,
+}: {
+  place: Place
+  favIds: Set<string>
+  userLocation: { lat: number; lng: number } | null
+  onClick: (id: string) => void
+}) {
+  const dist        = userLocation
+    ? haversine(userLocation.lat, userLocation.lng, place.lat, place.lng)
+    : null
+  const accentColor = TYPE_COLOR[place.type] ?? MARKER_COLOR
+  const isFav       = favIds.has(place.id)
+
+  const badges: { label: string; color: string; bg: string }[] = []
+  if (place.type === 'restaurant') {
+    if (place.corkage_type === 'free')
+      badges.push({ label: '콜키지 프리', color: '#c2410c', bg: '#fff7ed' })
+    else if (place.corkage_type === 'paid')
+      badges.push({ label: '콜키지 유료', color: '#b45309', bg: '#fffbeb' })
+  }
+  if (place.type === 'bar' && place.cover_charge != null && place.cover_charge > 0)
+    badges.push({ label: '커버차지', color: MARKER_COLOR, bg: `${MARKER_COLOR}15` })
+
+  return (
+    <li>
+      <button
+        onClick={() => onClick(place.id)}
+        className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+      >
+        <div className="flex items-start gap-2.5">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm font-semibold text-gray-900 truncate">{place.name}</span>
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
+              >
+                {TYPE_LABEL[place.type] ?? place.type}
+              </span>
+              {badges.map((b) => (
+                <span
+                  key={b.label}
+                  className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 shrink-0"
+                  style={{ color: b.color, backgroundColor: b.bg }}
+                >
+                  {b.label}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {dist !== null && (
+                <span className="text-[10px] font-medium text-emerald-500 shrink-0">
+                  {formatDist(dist)}
+                </span>
+              )}
+              <span className="text-xs text-gray-400 truncate">{place.address}</span>
+            </div>
+          </div>
+          {isFav && (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+              viewBox="0 0 24 24" fill={MARKER_COLOR} stroke={MARKER_COLOR}
+              strokeWidth="1.5" className="shrink-0 mt-0.5">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          )}
+        </div>
+      </button>
+    </li>
+  )
+}
+
 // ── 컴포넌트 ──────────────────────────────────────────────────────────────
 export default function ListPage() {
   const router   = useRouter()
@@ -72,12 +156,15 @@ export default function ListPage() {
   const [loggedIn, setLoggedIn] = useState(false)
 
   // 필터
-  const [filterState,       setFilterState]       = useState<FilterState>(INITIAL_FILTER)
+  const [filterState,        setFilterState]        = useState<FilterState>(INITIAL_FILTER)
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
-  const [showFilter,        setShowFilter]        = useState(false)
+  const [showFilter,         setShowFilter]         = useState(false)
 
-  // 탭: 목록 / 즐겨찾기
-  const [mainTab, setMainTab] = useState<'list' | 'favorites'>('list')
+  // 뷰 탭: 전체 / 종류별 / 지역별
+  const [viewTab, setViewTab] = useState<'all' | 'type' | 'region'>('all')
+
+  // 아코디언 열림 상태 (key: type 또는 gu 문자열)
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
   // 위치
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -151,52 +238,145 @@ export default function ListPage() {
     return result
   }, [places, filterState, selectedTagFilters])
 
-  const displayPlaces = useMemo(() => {
-    const list = mainTab === 'favorites'
-      ? filteredPlaces.filter((p) => favIds.has(p.id))
-      : filteredPlaces
-    if (!userLocation) return list
-    return [...list].sort((a, b) =>
+  // 거리순 정렬된 기본 목록
+  const sortedPlaces = useMemo(() => {
+    if (!userLocation) return filteredPlaces
+    return [...filteredPlaces].sort((a, b) =>
       haversine(userLocation.lat, userLocation.lng, a.lat, a.lng) -
       haversine(userLocation.lat, userLocation.lng, b.lat, b.lng),
     )
-  }, [filteredPlaces, mainTab, favIds, userLocation])
+  }, [filteredPlaces, userLocation])
+
+  // 종류별 그룹화
+  const groupedByType = useMemo(() => {
+    const map = new Map<string, Place[]>()
+    for (const p of sortedPlaces) {
+      if (!map.has(p.type)) map.set(p.type, [])
+      map.get(p.type)!.push(p)
+    }
+    return new Map(
+      [...map.entries()].sort(
+        (a, b) => TYPE_ORDER.indexOf(a[0]) - TYPE_ORDER.indexOf(b[0])
+      )
+    )
+  }, [sortedPlaces])
+
+  // 지역별 그룹화 (구/군 단위)
+  const groupedByRegion = useMemo(() => {
+    const map = new Map<string, Place[]>()
+    for (const p of sortedPlaces) {
+      const gu = extractGu(p.address)
+      if (!map.has(gu)) map.set(gu, [])
+      map.get(gu)!.push(p)
+    }
+    return new Map([...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko')))
+  }, [sortedPlaces])
 
   const isFilterActive =
     filterState.type !== 'all' || filterState.corkage ||
     filterState.categories.length > 0 || !!filterState.query ||
     selectedTagFilters.length > 0
 
-  // ─── 장소 클릭 → 상세 페이지로 이동 ──────────────────────────────────
-  const openOnMap = (id: string) => {
-    router.push(`/place/${id}`)
+  const openOnMap = (id: string) => router.push(`/place/${id}`)
+
+  const toggleGroup = (key: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  // 아코디언 그룹 렌더 헬퍼
+  const renderAccordionGroup = (
+    key: string,
+    label: string,
+    count: number,
+    items: Place[],
+    accentColor?: string,
+  ) => {
+    const isOpen = openGroups.has(key)
+    return (
+      <div key={key} className="border-b border-gray-50 last:border-0">
+        <button
+          onClick={() => toggleGroup(key)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            {accentColor && (
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: accentColor }}
+              />
+            )}
+            <span className="text-sm font-bold text-gray-800">{label}</span>
+            <span className="text-xs text-gray-400 font-normal">{count}개</span>
+          </div>
+          <svg
+            xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+            fill="none" stroke="#9ca3af" strokeWidth="2.5"
+            className={`shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          >
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        {isOpen && (
+          <ul className="divide-y divide-gray-50 bg-gray-50/40">
+            {items.map((place) => (
+              <PlaceRow
+                key={place.id}
+                place={place}
+                favIds={favIds}
+                userLocation={userLocation}
+                onClick={openOnMap}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    )
   }
 
   // ─── 렌더 ─────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* 헤더 */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-2 border-b border-gray-100">
+      <div className="flex-shrink-0 px-4 pt-4 pb-0 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-base font-bold text-gray-900">장소 목록</h1>
-          <button
-            onClick={() => setShowFilter((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
-            style={
-              isFilterActive
-                ? { backgroundColor: MARKER_COLOR, color: '#fff', borderColor: MARKER_COLOR }
-                : { backgroundColor: '#f9fafb', color: '#374151', borderColor: '#e5e7eb' }
-            }
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-            </svg>
-            필터
-            {isFilterActive && (
-              <span className="w-1.5 h-1.5 rounded-full bg-white/70 shrink-0" />
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 거리순 버튼 */}
+            <button
+              onClick={requestLocation}
+              className={`text-[10px] font-semibold flex items-center gap-0.5 ${
+                userLocation ? 'text-emerald-500' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+              </svg>
+              {userLocation ? '거리순' : '거리순 정렬'}
+            </button>
+            {/* 필터 버튼 */}
+            <button
+              onClick={() => setShowFilter((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
+              style={
+                isFilterActive
+                  ? { backgroundColor: MARKER_COLOR, color: '#fff', borderColor: MARKER_COLOR }
+                  : { backgroundColor: '#f9fafb', color: '#374151', borderColor: '#e5e7eb' }
+              }
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+              필터
+              {isFilterActive && <span className="w-1.5 h-1.5 rounded-full bg-white/70 shrink-0" />}
+            </button>
+          </div>
         </div>
 
         {/* 검색창 */}
@@ -238,62 +418,42 @@ export default function ListPage() {
           </div>
         )}
 
-        {/* 목록 / 즐겨찾기 탭 */}
-        <div className="flex border-b border-gray-100 -mb-2">
+        {/* 3-탭: 전체 / 종류별 / 지역별 */}
+        <div className="flex border-b border-gray-100 -mx-4 px-4">
           {([
-            { key: 'list',      label: '목록' },
-            { key: 'favorites', label: '즐겨찾기' },
+            { key: 'all',    label: '전체'   },
+            { key: 'type',   label: '종류별' },
+            { key: 'region', label: '지역별' },
           ] as const).map(({ key, label }) => (
             <button
               key={key}
-              onClick={() => {
-                if (key === 'favorites' && !loggedIn) return // 비로그인 시 비활성
-                setMainTab(key)
-              }}
+              onClick={() => setViewTab(key)}
               className={`flex-1 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px ${
-                mainTab === key
+                viewTab === key
                   ? 'border-[#BF3A21] text-[#BF3A21]'
-                  : key === 'favorites' && !loggedIn
-                  ? 'border-transparent text-gray-300 cursor-not-allowed'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
               {label}
-              {key === 'favorites' && !loggedIn && (
-                <span className="ml-1 text-[10px]">(로그인 필요)</span>
-              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 장소 목록 */}
+      {/* 장소 목록 본문 */}
       <div className="flex-1 overflow-y-auto">
-        {/* 카운트 + 거리 정렬 */}
-        <div className="px-4 pt-2 pb-1 flex items-center justify-between">
+        {/* 카운트 */}
+        <div className="px-4 pt-2 pb-1">
           <p className="text-xs text-gray-400">
-            {loading ? '불러오는 중...' : `${displayPlaces.length}개 장소`}
+            {loading ? '불러오는 중...' : `${filteredPlaces.length}개 장소`}
           </p>
-          <button
-            onClick={requestLocation}
-            className={`text-[10px] font-semibold flex items-center gap-0.5 ${
-              userLocation ? 'text-emerald-500' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" strokeWidth="2.5">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
-            </svg>
-            {userLocation ? '내 위치 기준 정렬됨' : '거리순 정렬'}
-          </button>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
             불러오는 중...
           </div>
-        ) : displayPlaces.length === 0 ? (
+        ) : filteredPlaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-2 text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -301,76 +461,39 @@ export default function ListPage() {
             </svg>
             <p className="text-sm">조건에 맞는 장소가 없어요.</p>
           </div>
-        ) : (
+        ) : viewTab === 'all' ? (
+          /* ── 전체 탭 ── */
           <ul className="divide-y divide-gray-50">
-            {displayPlaces.map((place) => {
-              const dist        = userLocation
-                ? haversine(userLocation.lat, userLocation.lng, place.lat, place.lng)
-                : null
-              const accentColor = TYPE_COLOR[place.type] ?? MARKER_COLOR
-              const isFav       = favIds.has(place.id)
-
-              // 정책 뱃지
-              const badges: { label: string; color: string; bg: string }[] = []
-              if (place.type === 'restaurant') {
-                if (place.corkage_type === 'free')
-                  badges.push({ label: '콜키지 프리', color: '#c2410c', bg: '#fff7ed' })
-                else if (place.corkage_type === 'paid')
-                  badges.push({ label: '콜키지 유료', color: '#b45309', bg: '#fffbeb' })
-              }
-              if (place.type === 'bar' && place.cover_charge != null && place.cover_charge > 0)
-                badges.push({ label: '커버차지', color: MARKER_COLOR, bg: `${MARKER_COLOR}15` })
-
-              return (
-                <li key={place.id}>
-                  <button
-                    onClick={() => openOnMap(place.id)}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-semibold text-gray-900 truncate">
-                            {place.name}
-                          </span>
-                          <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                            style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
-                          >
-                            {TYPE_LABEL[place.type] ?? place.type}
-                          </span>
-                          {badges.map((b) => (
-                            <span
-                              key={b.label}
-                              className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 shrink-0"
-                              style={{ color: b.color, backgroundColor: b.bg }}
-                            >
-                              {b.label}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          {dist !== null && (
-                            <span className="text-[10px] font-medium text-emerald-500 shrink-0">
-                              {formatDist(dist)}
-                            </span>
-                          )}
-                          <span className="text-xs text-gray-400 truncate">{place.address}</span>
-                        </div>
-                      </div>
-                      {isFav && (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                          viewBox="0 0 24 24" fill={MARKER_COLOR} stroke={MARKER_COLOR}
-                          strokeWidth="1.5" className="shrink-0 mt-0.5">
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                        </svg>
-                      )}
-                    </div>
-                  </button>
-                </li>
-              )
-            })}
+            {sortedPlaces.map((place) => (
+              <PlaceRow
+                key={place.id}
+                place={place}
+                favIds={favIds}
+                userLocation={userLocation}
+                onClick={openOnMap}
+              />
+            ))}
           </ul>
+        ) : viewTab === 'type' ? (
+          /* ── 종류별 탭 (아코디언) ── */
+          <div>
+            {[...groupedByType.entries()].map(([type, items]) =>
+              renderAccordionGroup(
+                type,
+                TYPE_LABEL[type] ?? type,
+                items.length,
+                items,
+                TYPE_COLOR[type],
+              )
+            )}
+          </div>
+        ) : (
+          /* ── 지역별 탭 (아코디언) ── */
+          <div>
+            {[...groupedByRegion.entries()].map(([gu, items]) =>
+              renderAccordionGroup(gu, gu, items.length, items)
+            )}
+          </div>
         )}
 
         {/* BottomNav 높이만큼 여백 */}
