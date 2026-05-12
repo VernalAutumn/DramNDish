@@ -51,8 +51,9 @@ export async function POST(req: NextRequest) {
       corkage_type, corkage_fee, cover_charge,
     } = body
 
-    // 코멘트가 있는데 비밀번호가 없으면 거부
-    if (comment?.trim() && !code?.trim()) {
+    // 비로그인 유저가 코멘트를 남기려는데 비밀번호가 없으면 거부
+    // 로그인 유저(submittedBy 존재)는 code 불필요
+    if (comment?.trim() && !submittedBy && !code?.trim()) {
       return NextResponse.json(
         { error: '코멘트 등록 시 비밀번호(code)가 필요합니다.' },
         { status: 400 }
@@ -138,13 +139,24 @@ export async function POST(req: NextRequest) {
 
     // 첫 한 줄 평 저장
     if (comment?.trim()) {
-      const password_hash = await bcrypt.hash(code.trim(), 10)
-      await supabase.from('comments').insert({
-        place_id:      data.id,
-        nickname:      nickname?.trim() || '익명',
-        content:       comment.trim(),
-        password_hash,
-      })
+      if (submittedBy) {
+        // 로그인 유저: user_id 기록, password_hash 불필요
+        await supabase.from('comments').insert({
+          place_id: data.id,
+          nickname: nickname?.trim() || '익명',
+          content:  comment.trim(),
+          user_id:  submittedBy,
+        })
+      } else {
+        // 비로그인 유저: password_hash 필수
+        const password_hash = await bcrypt.hash(code.trim(), 10)
+        await supabase.from('comments').insert({
+          place_id:      data.id,
+          nickname:      nickname?.trim() || '익명',
+          content:       comment.trim(),
+          password_hash,
+        })
+      }
     }
 
     return NextResponse.json(data, { status: 201 })
