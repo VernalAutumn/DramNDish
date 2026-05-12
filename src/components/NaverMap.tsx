@@ -287,6 +287,11 @@ export default function NaverMap() {
   const [isLoadingStats,     setIsLoadingStats]     = useState(false)
   const [isSavingNickname,   setIsSavingNickname]   = useState(false)
   const [isLoadingActivity,  setIsLoadingActivity]  = useState(false)
+  // PC 프로필 카드 닉네임 인라인 수정
+  const [isEditingNickPC,    setIsEditingNickPC]    = useState(false)
+  const [editNickValuePC,    setEditNickValuePC]    = useState('')
+  const [editNickErrorPC,    setEditNickErrorPC]    = useState('')
+  const [isSavingEditPC,     setIsSavingEditPC]     = useState(false)
 
   // ─── state: photos ───────────────────────────────────────────────────────
   const [photos,         setPhotos]         = useState<PlacePhoto[]>([])
@@ -496,6 +501,30 @@ export default function NaverMap() {
     } catch { /* 무시 */ }
     finally { setIsSavingNickname(false) }
   }, [currentUser, nicknameSetupValue, isSavingNickname, supabase, loadUserStats])
+
+  // ─── PC 프로필 카드: 닉네임 변경 + 캐스케이드 ───────────────────────────
+  const handleUpdateNicknamePC = useCallback(async () => {
+    const nick = editNickValuePC.trim()
+    if (!nick) { setEditNickErrorPC('닉네임을 입력해 주세요.'); return }
+    if (nick.length > 20) { setEditNickErrorPC('20자 이내로 입력해 주세요.'); return }
+    setIsSavingEditPC(true)
+    setEditNickErrorPC('')
+    try {
+      const res = await fetch('/api/user/nickname', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ nickname: nick }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setEditNickErrorPC(data.error ?? '저장 중 오류가 발생했습니다.'); return }
+      // 세션 갱신으로 UI 즉각 반영
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) setCurrentUser(user)
+      setIsEditingNickPC(false)
+      setEditNickValuePC('')
+    } catch { setEditNickErrorPC('저장 중 오류가 발생했습니다.') }
+    finally { setIsSavingEditPC(false) }
+  }, [editNickValuePC, supabase])
 
   // ─── 카드 열릴 때 대시보드 통계 로드 ─────────────────────────────────────
   useEffect(() => {
@@ -3558,6 +3587,64 @@ export default function NaverMap() {
               {/* ══ 케이스 C: 로그인 완료 (닉네임 설정됨) ══ 대시보드 */}
               {currentUser && !!(currentUser.user_metadata?.app_nickname as string | undefined) && (
                 <div className="py-3 space-y-1">
+
+                  {/* 닉네임 수정 영역 */}
+                  <div className="px-3.5 pb-2">
+                    {isEditingNickPC ? (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={editNickValuePC}
+                            onChange={(e) => { setEditNickValuePC(e.target.value); setEditNickErrorPC('') }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleUpdateNicknamePC()
+                              if (e.key === 'Escape') { setIsEditingNickPC(false); setEditNickErrorPC('') }
+                            }}
+                            maxLength={20}
+                            autoFocus
+                            placeholder="새 닉네임 (최대 20자)"
+                            className="flex-1 min-w-0 text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#BF3A21] bg-white transition-colors"
+                          />
+                          <button
+                            onClick={handleUpdateNicknamePC}
+                            disabled={isSavingEditPC}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-white disabled:opacity-50 transition-all"
+                            style={{ backgroundColor: MARKER_COLOR }}
+                          >
+                            {isSavingEditPC ? '…' : '저장'}
+                          </button>
+                          <button
+                            onClick={() => { setIsEditingNickPC(false); setEditNickErrorPC('') }}
+                            disabled={isSavingEditPC}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 transition-all"
+                          >
+                            취소
+                          </button>
+                        </div>
+                        {editNickErrorPC && (
+                          <p className="text-[10px] text-red-500 pl-0.5">{editNickErrorPC}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const appNick = currentUser.user_metadata?.app_nickname as string | undefined
+                          setEditNickValuePC(appNick ?? '')
+                          setIsEditingNickPC(true)
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-100 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+                          fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        닉네임 변경
+                      </button>
+                    )}
+                  </div>
+
                   {/* 통계 그리드 */}
                   <div className="px-3.5 pb-2">
                     {isLoadingStats ? (

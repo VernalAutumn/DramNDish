@@ -23,10 +23,16 @@ export default function ProfilePage() {
   const [userStats,        setUserStats]         = useState<UserStats | null>(null)
   const [loadingStats,     setLoadingStats]      = useState(false)
   const [favCount,         setFavCount]          = useState(0)
+  // Case B: 최초 닉네임 설정
   const [showNicknameForm, setShowNicknameForm]  = useState(false)
   const [newNickname,      setNewNickname]        = useState('')
   const [savingNick,       setSavingNick]         = useState(false)
   const [nickError,        setNickError]          = useState('')
+  // Case C: 닉네임 인라인 수정
+  const [isEditingNick,    setIsEditingNick]      = useState(false)
+  const [editNickValue,    setEditNickValue]      = useState('')
+  const [editNickError,    setEditNickError]      = useState('')
+  const [isSavingEdit,     setIsSavingEdit]       = useState(false)
 
   // ─── 초기화 ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -79,6 +85,19 @@ export default function ProfilePage() {
     window.location.reload()
   }
 
+  // ─── 공통 닉네임 저장 API 호출 ──────────────────────────────────────────
+  const saveNicknameViaAPI = async (nick: string): Promise<string | null> => {
+    const res = await fetch('/api/user/nickname', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: nick }),
+    })
+    const data = await res.json()
+    if (!res.ok) return data.error ?? '저장 중 오류가 발생했습니다.'
+    return null // null = 성공
+  }
+
+  // ─── Case B: 최초 닉네임 설정 ────────────────────────────────────────────
   const handleSaveNickname = async () => {
     const nick = newNickname.trim()
     if (!nick) { setNickError('닉네임을 입력해 주세요.'); return }
@@ -86,14 +105,45 @@ export default function ProfilePage() {
     setSavingNick(true)
     setNickError('')
     try {
-      const { error } = await supabase.auth.updateUser({ data: { app_nickname: nick } })
-      if (error) { setNickError('저장 중 오류가 발생했습니다.'); return }
-      // 세션 갱신
+      const err = await saveNicknameViaAPI(nick)
+      if (err) { setNickError(err); return }
+      // 세션 갱신 → UI 즉각 반영
       const { data: { session } } = await supabase.auth.getSession()
       setCurrentUser(session?.user ?? null)
       setShowNicknameForm(false)
     } catch { setNickError('저장 중 오류가 발생했습니다.') }
     finally { setSavingNick(false) }
+  }
+
+  // ─── Case C: 기존 닉네임 변경 ────────────────────────────────────────────
+  const handleStartEditNick = () => {
+    const current = currentUser?.user_metadata?.app_nickname as string | undefined
+    setEditNickValue(current ?? '')
+    setEditNickError('')
+    setIsEditingNick(true)
+  }
+
+  const handleCancelEditNick = () => {
+    setIsEditingNick(false)
+    setEditNickValue('')
+    setEditNickError('')
+  }
+
+  const handleUpdateNickname = async () => {
+    const nick = editNickValue.trim()
+    if (!nick) { setEditNickError('닉네임을 입력해 주세요.'); return }
+    if (nick.length > 20) { setEditNickError('20자 이내로 입력해 주세요.'); return }
+    setIsSavingEdit(true)
+    setEditNickError('')
+    try {
+      const err = await saveNicknameViaAPI(nick)
+      if (err) { setEditNickError(err); return }
+      // 세션 갱신 → 프로필 UI 즉각 반영
+      const { data: { session } } = await supabase.auth.getSession()
+      setCurrentUser(session?.user ?? null)
+      setIsEditingNick(false)
+    } catch { setEditNickError('저장 중 오류가 발생했습니다.') }
+    finally { setIsSavingEdit(false) }
   }
 
   // ─── 법적 고지 ────────────────────────────────────────────────────────
@@ -242,18 +292,80 @@ export default function ProfilePage() {
         {currentUser && !!(currentUser.user_metadata?.app_nickname as string | undefined) && (
           <div className="space-y-4">
             {/* 유저 정보 */}
-            <div className="flex items-center gap-3 bg-gray-50 rounded-2xl p-4">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center text-white text-base font-bold shrink-0"
-                style={{ backgroundColor: MARKER_COLOR }}
-              >
-                {(currentUser.user_metadata.app_nickname as string)[0].toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-bold text-gray-900">
-                  {currentUser.user_metadata.app_nickname as string}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">Google 계정으로 로그인됨</p>
+            <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                {/* 아바타 */}
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center text-white text-base font-bold shrink-0"
+                  style={{ backgroundColor: MARKER_COLOR }}
+                >
+                  {(currentUser.user_metadata.app_nickname as string)[0].toUpperCase()}
+                </div>
+
+                {/* 닉네임 영역 */}
+                {isEditingNick ? (
+                  /* ── 수정 모드 ── */
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={editNickValue}
+                        onChange={(e) => { setEditNickValue(e.target.value); setEditNickError('') }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleUpdateNickname()
+                          if (e.key === 'Escape') handleCancelEditNick()
+                        }}
+                        maxLength={20}
+                        autoFocus
+                        placeholder="새 닉네임 (최대 20자)"
+                        className="flex-1 min-w-0 text-sm border border-gray-300 rounded-xl px-3 py-1.5 outline-none focus:border-[#BF3A21] bg-white transition-colors"
+                      />
+                      <button
+                        onClick={handleUpdateNickname}
+                        disabled={isSavingEdit}
+                        className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold text-white disabled:opacity-50 active:scale-[0.97] transition-all"
+                        style={{ backgroundColor: MARKER_COLOR }}
+                      >
+                        {isSavingEdit ? '저장 중…' : '저장'}
+                      </button>
+                      <button
+                        onClick={handleCancelEditNick}
+                        disabled={isSavingEdit}
+                        className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-white border border-gray-200 disabled:opacity-50 active:scale-[0.97] transition-all"
+                      >
+                        취소
+                      </button>
+                    </div>
+                    {editNickError && (
+                      <p className="text-[11px] text-red-500 pl-1">{editNickError}</p>
+                    )}
+                    <p className="text-[10px] text-gray-400 pl-1">
+                      닉네임을 변경하면 기존에 작성한 코멘트·사진의 이름도 함께 바뀝니다.
+                    </p>
+                  </div>
+                ) : (
+                  /* ── 표시 모드 ── */
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-gray-900 truncate">
+                        {currentUser.user_metadata.app_nickname as string}
+                      </p>
+                      <button
+                        onClick={handleStartEditNick}
+                        className="shrink-0 p-1 text-gray-400 hover:text-[#BF3A21] active:scale-90 transition-all"
+                        aria-label="닉네임 수정"
+                      >
+                        {/* Pencil icon */}
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                          fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">Google 계정으로 로그인됨</p>
+                  </div>
+                )}
               </div>
             </div>
 
