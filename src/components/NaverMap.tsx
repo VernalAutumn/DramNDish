@@ -87,6 +87,19 @@ interface ActivityItem {
   place_name: string
 }
 
+interface PCPlace {
+  id: string
+  name: string
+  address: string
+  type: string
+  created_at: string
+}
+
+interface PCFavorite {
+  place_id: string
+  places: { id: string; name: string; address: string; type: string } | null
+}
+
 const MARKER_COLOR         = '#BF3A21'
 const CLUSTER_THRESHOLD    = 14
 const CLUSTER_GRID_SIZE    = 60
@@ -298,6 +311,11 @@ export default function NaverMap() {
   const [editNickValuePC,    setEditNickValuePC]    = useState('')
   const [editNickErrorPC,    setEditNickErrorPC]    = useState('')
   const [isSavingEditPC,     setIsSavingEditPC]     = useState(false)
+  // PC 프로필 탭
+  const [pcProfileTab,     setPcProfileTab]     = useState<'places' | 'comments' | 'photos' | 'favorites'>('places')
+  const [pcPlaces,         setPcPlaces]         = useState<PCPlace[]>([])
+  const [pcFavoritesList,  setPcFavoritesList]  = useState<PCFavorite[]>([])
+  const [isLoadingPCExtra, setIsLoadingPCExtra] = useState(false)
 
   // ─── state: photos ───────────────────────────────────────────────────────
   const [photos,         setPhotos]         = useState<PlacePhoto[]>([])
@@ -482,6 +500,20 @@ export default function NaverMap() {
     finally { setIsLoadingActivity(false) }
   }, [])
 
+  // ─── PC 프로필 추가 데이터 로드 (장소 + 즐겨찾기) ──────────────────────
+  const loadPCProfileExtra = useCallback(async (userId: string) => {
+    setIsLoadingPCExtra(true)
+    try {
+      const [placesRes, favsRes] = await Promise.all([
+        supabase.from('places').select('id, name, address, type, created_at').eq('submitted_by', userId).order('created_at', { ascending: false }),
+        supabase.from('favorites').select('place_id, places(id, name, address, type)').eq('user_id', userId),
+      ])
+      if (placesRes.data) setPcPlaces(placesRes.data as PCPlace[])
+      if (favsRes.data)   setPcFavoritesList(favsRes.data as unknown as PCFavorite[])
+    } catch { /* 무시 */ }
+    finally { setIsLoadingPCExtra(false) }
+  }, [supabase])
+
   // ─── 로그아웃 ────────────────────────────────────────────────────────────
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut()
@@ -532,11 +564,13 @@ export default function NaverMap() {
     finally { setIsSavingEditPC(false) }
   }, [editNickValuePC, supabase])
 
-  // ─── 카드 열릴 때 대시보드 통계 로드 ─────────────────────────────────────
+  // ─── 카드 열릴 때 프로필 데이터 일괄 로드 ────────────────────────────────
   useEffect(() => {
     const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
-    if (showProfileCard && currentUser && appNick && !isLoadingStats) {
+    if (showProfileCard && currentUser && appNick) {
       loadUserStats()
+      loadActivity()
+      loadPCProfileExtra(currentUser.id)
     }
   }, [showProfileCard]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3744,29 +3778,106 @@ export default function NaverMap() {
                     )}
                   </div>
 
-                  {/* 통계 그리드 */}
-                  <div className="px-3.5 pb-2">
-                    {isLoadingStats ? (
-                      <p className="text-[10px] text-gray-400 text-center py-2">불러오는 중...</p>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { label: '코멘트',  value: userStats?.comments ?? 0, onClick: async () => { setActivityTab('comment'); setShowActivitySheet(true); await loadActivity() } },
-                          { label: '사진',    value: userStats?.photos   ?? 0, onClick: async () => { setActivityTab('photo');   setShowActivitySheet(true); await loadActivity() } },
-                          { label: '즐겨찾기', value: favoritedIds.size,        onClick: () => setMainTab('favorites') },
-                        ].map(({ label, value, onClick }) => (
-                          <div
-                            key={label}
-                            onClick={onClick ? (e: React.MouseEvent) => { e.stopPropagation(); onClick() } : undefined}
-                            className="text-center bg-gray-50 rounded-xl py-2.5 cursor-pointer hover:bg-gray-100 active:scale-[0.97] transition-all border border-gray-100"
-                          >
-                            <p className="text-base font-bold text-gray-900">{value}</p>
-                            <p className="text-[9px] text-gray-400 mt-0.5">{label}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  {/* 프로필 탭 바 */}
+                  <div className="flex border-b border-gray-100">
+                    {([
+                      { key: 'places',    label: '장소',   count: pcPlaces.length },
+                      { key: 'comments',  label: '코멘트', count: activityList.filter(i => i.type === 'comment').length },
+                      { key: 'photos',    label: '사진',   count: activityList.filter(i => i.type === 'photo').length },
+                      { key: 'favorites', label: '즐겨찾기', count: pcFavoritesList.length },
+                    ] as { key: typeof pcProfileTab; label: string; count: number }[]).map(({ key, label, count }) => (
+                      <button
+                        key={key}
+                        onClick={() => setPcProfileTab(key)}
+                        className={`flex-1 py-2 text-[10px] font-semibold transition-colors ${
+                          pcProfileTab === key
+                            ? 'text-[#BF3A21] border-b-2 border-[#BF3A21]'
+                            : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        {label}<span className="ml-0.5 opacity-60">({count})</span>
+                      </button>
+                    ))}
                   </div>
+
+                  {/* 탭 콘텐츠 */}
+                  {(isLoadingPCExtra || isLoadingActivity) ? (
+                    <p className="text-[10px] text-gray-400 text-center py-4">불러오는 중...</p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto pb-1">
+                      {/* 장소 탭 */}
+                      {pcProfileTab === 'places' && (
+                        pcPlaces.length === 0
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">등록한 장소가 없습니다.</p>
+                          : <div className="divide-y divide-gray-50">
+                              {pcPlaces.map(p => (
+                                <div
+                                  key={p.id}
+                                  onClick={() => { setShowProfileCard(false); openDetail(p.id, LIST_CLICK_ZOOM) }}
+                                  className="px-3.5 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                  <p className="text-[11px] font-semibold text-gray-800 truncate">{p.name}</p>
+                                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.address}</p>
+                                </div>
+                              ))}
+                            </div>
+                      )}
+                      {/* 코멘트 탭 */}
+                      {pcProfileTab === 'comments' && (() => {
+                        const items = activityList.filter(i => i.type === 'comment')
+                        return items.length === 0
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">작성한 코멘트가 없습니다.</p>
+                          : <div className="divide-y divide-gray-50">
+                              {items.map(i => (
+                                <div
+                                  key={i.id}
+                                  onClick={() => { setShowProfileCard(false); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
+                                  className="px-3.5 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                  <p className="text-[10px] text-gray-400 mb-0.5">📍 {i.place_name}</p>
+                                  <p className="text-[11px] text-gray-700 line-clamp-2">{i.content}</p>
+                                </div>
+                              ))}
+                            </div>
+                      })()}
+                      {/* 사진 탭 */}
+                      {pcProfileTab === 'photos' && (() => {
+                        const items = activityList.filter(i => i.type === 'photo')
+                        return items.length === 0
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">등록한 사진이 없습니다.</p>
+                          : <div className="grid grid-cols-3 gap-1 p-2">
+                              {items.map(i => (
+                                <div
+                                  key={i.id}
+                                  onClick={() => { setShowProfileCard(false); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
+                                  className="relative aspect-square cursor-pointer"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={i.url} alt="" className="w-full h-full object-cover rounded hover:opacity-90 transition-opacity" />
+                                </div>
+                              ))}
+                            </div>
+                      })()}
+                      {/* 즐겨찾기 탭 */}
+                      {pcProfileTab === 'favorites' && (
+                        pcFavoritesList.length === 0
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">즐겨찾기한 장소가 없습니다.</p>
+                          : <div className="divide-y divide-gray-50">
+                              {pcFavoritesList.map(f => f.places && (
+                                <div
+                                  key={f.place_id}
+                                  onClick={() => { setShowProfileCard(false); openDetail(f.places!.id, LIST_CLICK_ZOOM) }}
+                                  className="px-3.5 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                  <p className="text-[11px] font-semibold text-gray-800 truncate">{f.places.name}</p>
+                                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{f.places.address}</p>
+                                </div>
+                              ))}
+                            </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* 구분선 + 로그아웃 */}
                   <div className="px-3.5 pt-1.5">
                     <div className="border-t border-gray-100 mb-2" />
