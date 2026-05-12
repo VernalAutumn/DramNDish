@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { supabase } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
+
+async function getSessionUserId(): Promise<string | null> {
+  const cookieStore = await cookies()
+  const ssrClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(list) { list.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
+      },
+    },
+  )
+  const { data: { user } } = await ssrClient.auth.getUser()
+  return user?.id ?? null
+}
 
 // GET: 장소의 태그 목록
 export async function GET(
@@ -29,7 +47,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const body = await req.json()
+  const [body, userId] = await Promise.all([req.json(), getSessionUserId()])
+
   const label: string            = (body.label ?? '').trim()
   const type: string             = body.type ?? 'general'
   const code: string             = (body.code  ?? '').trim()
@@ -59,7 +78,6 @@ export async function POST(
       return NextResponse.json({ error: '태그를 찾을 수 없습니다.' }, { status: 404 })
     }
     if (existing.count <= 1) {
-      // count가 1 이하 → row 완전 삭제
       const { error: deleteErr } = await supabase
         .from('tags')
         .delete()
@@ -70,7 +88,6 @@ export async function POST(
       }
       return NextResponse.json({ deleted: true, label })
     }
-    // count -1
     const { data: updated, error: updateErr } = await supabase
       .from('tags')
       .update({ count: existing.count - 1 })
@@ -100,11 +117,18 @@ export async function POST(
     return NextResponse.json(updated)
   }
 
-  // 신규 생성 → code bcrypt 해싱
+  // 신규 생성 → code bcrypt 해싱 + added_by 기록
   const password_hash = code ? await bcrypt.hash(code, 10) : null
   const { data: inserted, error: insertErr } = await supabase
     .from('tags')
-    .insert({ place_id: id, label, type, count: 1, password_hash })
+    .insert({
+      place_id: id,
+      label,
+      type,
+      count: 1,
+      password_hash,
+      ...(userId ? { added_by: userId } : {}),
+    })
     .select('id, label, count, type')
     .single()
 
