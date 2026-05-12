@@ -26,6 +26,7 @@ interface Place {
   corkage_type:   'impossible' | 'free' | 'paid' | null
   corkage_fee:    number | null
   cover_charge:   number | null
+  contributor_nickname: string | null
   tags?:          PlaceTag[]
 }
 
@@ -130,6 +131,11 @@ function PlaceRow({
               )}
               <span className="text-xs text-gray-400 truncate">{place.address}</span>
             </div>
+            {place.contributor_nickname && (
+              <p className="text-[10px] text-gray-300 mt-0.5">
+                Added by {place.contributor_nickname}
+              </p>
+            )}
           </div>
           {isFav && (
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"

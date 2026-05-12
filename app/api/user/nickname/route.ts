@@ -75,5 +75,15 @@ export async function PATCH(req: NextRequest) {
     console.warn('[nickname PATCH] place_photos cascade warn:', photoErr.message)
   }
 
+  // ── 4. places 기여자 닉네임 캐스케이드 업데이트 ─────────────────────────
+  const { error: placeErr } = await ssrClient
+    .from('places')
+    .update({ contributor_nickname: raw })
+    .eq('submitted_by', user.id)
+
+  if (placeErr) {
+    console.warn('[nickname PATCH] places cascade warn:', placeErr.message)
+  }
+
   return NextResponse.json({ nickname: raw })
 }

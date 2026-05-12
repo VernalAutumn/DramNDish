@@ -115,11 +115,12 @@ export async function POST(req: NextRequest) {
         lat,
         lng,
         type,
-        naver_place_id: naver_place_id ?? null,
-        district:       district       ?? null,
-        city:           city           ?? null,
-        region:         'domestic',
-        submitted_by:   submittedBy,
+        naver_place_id:       naver_place_id       ?? null,
+        district:             district             ?? null,
+        city:                 city                 ?? null,
+        region:               'domestic',
+        submitted_by:         submittedBy,
+        contributor_nickname: nickname?.trim()     || null,
         // 식당: 콜키지 정보
         ...(type === 'restaurant' ? {
           corkage_type: (['impossible', 'free', 'paid'].includes(corkage_type) ? corkage_type : 'impossible'),

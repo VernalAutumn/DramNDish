@@ -18,6 +18,7 @@ interface Place {
   corkage_type:  'impossible' | 'free' | 'paid' | null
   corkage_fee:   number | null
   cover_charge:  number | null
+  contributor_nickname: string | null
 }
 
 interface Tag {
@@ -499,6 +500,11 @@ export default function PlaceDetailClient({
           {(place.city || place.district) && (
             <p className="mt-1 text-xs text-gray-400 pl-[18px]">
               {[place.city, place.district].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          {place.contributor_nickname && (
+            <p className="mt-1.5 text-caption text-text-disabled pl-[18px]">
+              Added by {place.contributor_nickname}
             </p>
           )}
         </div>
