@@ -34,9 +34,10 @@ interface Place {
   favorites_count: number | null
   tags?: PlaceTag[]
   // 신규 컬럼
-  corkage_type:  'impossible' | 'free' | 'paid' | null
-  corkage_fee:   number | null
-  cover_charge:  number | null
+  corkage_type:         'impossible' | 'free' | 'paid' | null
+  corkage_fee:          number | null
+  cover_charge:         number | null
+  contributor_nickname: string | null
 }
 
 interface Tag {
@@ -2584,6 +2585,11 @@ export default function NaverMap() {
                     신고
                   </button>
                 </div>
+                {selectedPlace.contributor_nickname && (
+                  <p className="text-[10px] text-text-disabled -mt-2 pl-[18px]">
+                    Added by {selectedPlace.contributor_nickname}
+                  </p>
+                )}
                 {/* 액션 버튼 (즐겨찾기 + 지도 보기) */}
                 <div className="flex gap-2">
                   <button

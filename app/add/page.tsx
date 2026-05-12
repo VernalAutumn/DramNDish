@@ -150,6 +150,8 @@ export default function AddPage() {
           city:           result.city,
           lat:            result.coords.lat,
           lng:            result.coords.lng,
+          // 기여자 닉네임 — contributor_nickname 저장용으로 항상 전달
+          nickname: resolvedNickname,
           // 로그인 유저 ID를 submitted_by 로 항상 전달
           ...(currentUser ? { submitted_by: currentUser.id } : {}),
           ...(addType === 'restaurant' ? {
