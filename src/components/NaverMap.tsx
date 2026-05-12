@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import Script from 'next/script'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { track } from '@vercel/analytics/react'
 import SearchFilter, { FilterState, INITIAL_FILTER } from './SearchFilter'
 import { createClient } from '@/src/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
@@ -558,6 +559,8 @@ export default function NaverMap() {
   const openDetail = useCallback(async (id: string, targetZoom?: number) => {
     const place = placesRef.current.find((p) => p.id === id)
     if (!place) return
+
+    track('view_place_detail', { placeId: place.id, placeName: place.name })
 
     // ── 모바일: Preview Card 표시, 무거운 바텀시트 패널 없음 ─────────────────
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
