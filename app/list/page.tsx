@@ -101,14 +101,14 @@ function PlaceRow({
     <li>
       <button
         onClick={() => onClick(place.id)}
-        className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+        className="w-full text-left px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition-colors"
       >
         <div className="flex items-start gap-2.5">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-sm font-semibold text-gray-900 truncate">{place.name}</span>
               <span
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                className="text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0"
                 style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
               >
                 {TYPE_LABEL[place.type] ?? place.type}
@@ -116,7 +116,7 @@ function PlaceRow({
               {badges.map((b) => (
                 <span
                   key={b.label}
-                  className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 shrink-0"
+                  className="text-[11px] font-semibold rounded-full px-2.5 py-0.5 shrink-0"
                   style={{ color: b.color, backgroundColor: b.bg }}
                 >
                   {b.label}
@@ -125,14 +125,14 @@ function PlaceRow({
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {dist !== null && (
-                <span className="text-[10px] font-medium text-emerald-500 shrink-0">
+                <span className="text-[11px] font-medium text-emerald-500 shrink-0">
                   {formatDist(dist)}
                 </span>
               )}
               <span className="text-xs text-gray-400 truncate">{place.address}</span>
             </div>
             {place.contributor_nickname && (
-              <p className="text-[10px] text-gray-300 mt-0.5">
+              <p className="text-[11px] text-gray-300 mt-0.5">
                 Added by {place.contributor_nickname}
               </p>
             )}
@@ -306,7 +306,7 @@ export default function ListPage() {
       <div key={key} className="border-b border-gray-50 last:border-0">
         <button
           onClick={() => toggleGroup(key)}
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition-colors"
         >
           <div className="flex items-center gap-2">
             {accentColor && (
@@ -354,7 +354,7 @@ export default function ListPage() {
             {/* 거리순 버튼 */}
             <button
               onClick={requestLocation}
-              className={`text-[10px] font-semibold flex items-center gap-0.5 ${
+              className={`text-[11px] font-semibold flex items-center gap-0.5 ${
                 userLocation ? 'text-emerald-500' : 'text-gray-400 hover:text-gray-600'
               }`}
             >

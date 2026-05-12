@@ -470,7 +470,7 @@ export default function PlaceDetailClient({
       <div className="max-w-lg mx-auto px-4 py-5 space-y-3">
 
         {/* ① 기본 정보 */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <div className="bg-white rounded-2xl p-4">
           <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-gray-900 leading-tight">{place.name}</h2>
@@ -533,7 +533,7 @@ export default function PlaceDetailClient({
 
         {/* 리쿼샵: 결제수단 */}
         {place.type === 'whisky' && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm">
+          <div className="bg-white rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>결제수단</SectionTitle>
               <button onClick={() => setShowPaymentInput(v => !v)}
@@ -575,7 +575,7 @@ export default function PlaceDetailClient({
 
         {/* 식당: 콜키지 */}
         {place.type === 'restaurant' && place.corkage_type && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm">
+          <div className="bg-white rounded-2xl p-4">
             <SectionTitle>콜키지</SectionTitle>
             {place.corkage_type === 'impossible' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-500">
@@ -599,7 +599,7 @@ export default function PlaceDetailClient({
 
         {/* 바: 커버차지 */}
         {place.type === 'bar' && place.cover_charge != null && place.cover_charge > 0 && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm">
+          <div className="bg-white rounded-2xl p-4">
             <SectionTitle>커버차지</SectionTitle>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-50 text-[#BF3A21] border border-[#BF3A21]/30">
               🎵 커버차지 {place.cover_charge.toLocaleString()}원
@@ -608,7 +608,7 @@ export default function PlaceDetailClient({
         )}
 
         {/* ④ 일반 태그 */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <div className="bg-white rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <SectionTitle>태그</SectionTitle>
             <button onClick={() => setShowTagInput(v => !v)}
@@ -646,7 +646,7 @@ export default function PlaceDetailClient({
         </div>
 
         {/* ⑤ 사진 */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <div className="bg-white rounded-2xl p-4">
           <SectionTitle>사진</SectionTitle>
           <input type="file" id="photo-upload" accept="image/*" className="hidden"
             onChange={handlePhotoUpload} disabled={isUploading}/>
@@ -677,7 +677,7 @@ export default function PlaceDetailClient({
                 >
                   <img src={photo.url} alt={`${photo.nickname}님의 사진`} className="w-full h-full object-cover"/>
                   <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-between">
-                    <p className="text-[10px] text-white font-medium truncate">{photo.nickname}</p>
+                    <p className="text-[11px] text-white font-medium truncate">{photo.nickname}</p>
                     <button
                       onClick={e => { e.stopPropagation(); openReport(photo.id, 'photo') }}
                       className="shrink-0 p-1 text-white/60 hover:text-red-300 transition-colors"
@@ -694,7 +694,7 @@ export default function PlaceDetailClient({
         </div>
 
         {/* ⑥ 코멘트 */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <div className="bg-white rounded-2xl p-4">
           <SectionTitle>한 줄 평</SectionTitle>
 
           {/* 작성 폼 */}
@@ -703,14 +703,14 @@ export default function PlaceDetailClient({
             {!authLoading && (
               currentUser ? (
                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
                     style={{ backgroundColor: BRAND }}>
                     {((currentUser.user_metadata?.app_nickname as string | undefined) || '?')[0].toUpperCase()}
                   </div>
                   <span className="text-xs text-gray-600 font-medium">
                     {(currentUser.user_metadata?.app_nickname as string | undefined) || '익명'}
                   </span>
-                  <span className="text-[10px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
+                  <span className="text-[11px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
                 </div>
               ) : (
                 <input type="text" value={nickname} onChange={e => setNickname(e.target.value)}
@@ -754,7 +754,7 @@ export default function PlaceDetailClient({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-semibold text-gray-800">{c.nickname}</span>
-                          <span className="text-[10px] text-gray-400">{formatDate(c.created_at)}</span>
+                          <span className="text-[11px] text-gray-400">{formatDate(c.created_at)}</span>
                         </div>
                         <p className="text-sm text-gray-700 mt-0.5 leading-snug break-words">{c.content}</p>
                       </div>
@@ -787,7 +787,7 @@ export default function PlaceDetailClient({
         </div>
 
         {/* 면책 조항 */}
-        <p className="text-[10px] text-gray-400 text-center px-4 pb-6 leading-relaxed">
+        <p className="text-[11px] text-gray-400 text-center px-4 pb-6 leading-relaxed">
           자세한 사항은 네이버 지도 또는 연락을 통해 직접 확인하시길 바랍니다.<br/>
           본 지도는 위치 정보만 제공하며, 이로 인한 손해를 책임지지 않습니다.
         </p>

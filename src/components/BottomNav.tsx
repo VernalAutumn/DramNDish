@@ -38,10 +38,10 @@ export default function BottomNav() {
           <button
             key={key}
             onClick={() => router.push(href)}
-            className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 active:bg-gray-50 transition-colors"
+            className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 active:bg-gray-50 transition-colors"
           >
             <Icon size={22} color={color} strokeWidth={isActive ? 2.2 : 1.8} />
-            <span className="text-[10px] font-semibold leading-none" style={{ color }}>
+            <span className="text-[11px] font-semibold leading-none" style={{ color }}>
               {label}
             </span>
           </button>

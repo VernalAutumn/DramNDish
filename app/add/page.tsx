@@ -253,7 +253,7 @@ export default function AddPage() {
                 {isSearching ? '검색 중' : '검색'}
               </button>
             </div>
-            <p className="text-[10px] text-gray-400 leading-relaxed mt-1.5">
+            <p className="text-[11px] text-gray-400 leading-relaxed mt-1.5">
               네이버 검색 API 정책으로 인해 검색 결과는 최대 5개까지만 노출됩니다.<br />
               찾으시는 장소가 없다면 보다 정확한 검색어(예: 상호명 + 지점명) 또는 네이버 지도에서 확인 후 입력해 주세요.
             </p>
@@ -466,14 +466,14 @@ export default function AddPage() {
             {!authLoading && (
               currentUser ? (
                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
                     style={{ backgroundColor: '#BF3A21' }}>
                     {((currentUser.user_metadata?.app_nickname as string | undefined) || '?')[0].toUpperCase()}
                   </div>
                   <span className="text-xs text-gray-600 font-medium">
                     {(currentUser.user_metadata?.app_nickname as string | undefined) || '익명'}
                   </span>
-                  <span className="text-[10px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
+                  <span className="text-[11px] text-gray-400 ml-auto">로그인된 계정으로 등록됩니다</span>
                 </div>
               ) : (
                 <div>

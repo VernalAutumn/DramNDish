@@ -106,7 +106,7 @@ export default function SearchFilter({ onChange, tags, selectedTags, onTagChange
       {/* 태그 칩 필터 (general 태그, 다중 선택 OR) */}
       {tags && tags.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold text-gray-400 mb-1.5 uppercase tracking-wide">태그</p>
+          <p className="text-[11px] font-bold text-gray-400 mb-1.5 uppercase tracking-wide">태그</p>
           <div className="flex gap-1.5 flex-wrap">
             {selectedTags && selectedTags.length > 0 && (
               <button

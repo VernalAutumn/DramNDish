@@ -198,7 +198,7 @@ export default function ProfilePage() {
 
   // ─── 공통 컴포넌트 ─────────────────────────────────────────────────────
   const LegalNote = () => (
-    <p className="text-[9px] text-gray-400 leading-relaxed text-center mt-3">
+    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-3">
       본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
       주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
       <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
@@ -214,7 +214,7 @@ export default function ProfilePage() {
   )
 
   const TypeBadge = ({ type }: { type: string }) => (
-    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+    <span className="shrink-0 text-[11px] font-bold px-2.5 py-0.5 rounded-full"
       style={{ color: TYPE_COLOR[type] ?? BRAND, backgroundColor: `${TYPE_COLOR[type] ?? BRAND}18` }}>
       {TYPE_LABEL[type] ?? type}
     </span>
@@ -268,12 +268,12 @@ export default function ProfilePage() {
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-gray-400">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
+              <p className="text-[11px] text-gray-400">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
             </div>
             <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
               <p className="text-xs font-bold text-gray-700">계정 로그인</p>
               <button onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 active:scale-[0.98] transition-all shadow-sm">
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 active:scale-[0.98] transition-all shadow-sm">
                 <svg viewBox="0 0 24 24" width="16" height="16">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -301,14 +301,14 @@ export default function ProfilePage() {
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-gray-400 bg-white" />
                   {nickError && <p className="text-xs text-red-500">{nickError}</p>}
                   <button onClick={handleSaveNickname} disabled={savingNick}
-                    className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60"
+                    className="w-full py-3 rounded-2xl text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60"
                     style={{ backgroundColor: BRAND }}>
                     {savingNick ? '저장 중...' : '저장'}
                   </button>
                 </div>
               ) : (
                 <button onClick={() => setShowNicknameForm(true)}
-                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white active:scale-[0.98] transition-all"
+                  className="w-full py-3 rounded-2xl text-sm font-bold text-white active:scale-[0.98] transition-all"
                   style={{ backgroundColor: BRAND }}>
                   닉네임 설정하기
                 </button>
@@ -352,7 +352,7 @@ export default function ProfilePage() {
                         </button>
                       </div>
                       {editNickError && <p className="text-[11px] text-red-500 pl-1">{editNickError}</p>}
-                      <p className="text-[10px] text-gray-400 pl-1">닉네임을 변경하면 기존에 작성한 코멘트·사진의 이름도 함께 바뀝니다.</p>
+                      <p className="text-[11px] text-gray-400 pl-1">닉네임을 변경하면 기존에 작성한 코멘트·사진의 이름도 함께 바뀝니다.</p>
                     </div>
                   ) : (
                     <div className="flex-1 min-w-0">
@@ -378,14 +378,14 @@ export default function ProfilePage() {
             <div className="flex border-b border-gray-100 px-4">
               {TABS.map(({ key, label, count }) => (
                 <button key={key} onClick={() => setActiveTab(key)}
-                  className={`flex-1 py-2.5 text-[11px] font-semibold transition-colors border-b-2 -mb-px ${
+                  className={`flex-1 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px ${
                     activeTab === key
                       ? 'border-[#BF3A21] text-[#BF3A21]'
                       : 'border-transparent text-gray-400 hover:text-gray-600'
                   }`}>
                   {label}
                   {!loadingContent && count > 0 && (
-                    <span className="ml-1 text-[10px] opacity-60">({count})</span>
+                    <span className="ml-1 text-[11px] opacity-60">({count})</span>
                   )}
                 </button>
               ))}
@@ -405,13 +405,13 @@ export default function ProfilePage() {
                           {myPlaces.map(p => (
                             <li key={p.id}>
                               <button onClick={() => router.push(`/place/${p.id}`)}
-                                className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                                className="w-full text-left px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition-colors">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-sm font-semibold text-gray-800 truncate">{p.name}</span>
                                   <TypeBadge type={p.type} />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-0.5 truncate">{p.address}</p>
-                                <p className="text-[10px] text-gray-300 mt-0.5">{formatDate(p.created_at)}</p>
+                                <p className="text-[11px] text-gray-300 mt-0.5">{formatDate(p.created_at)}</p>
                               </button>
                             </li>
                           ))}
@@ -426,12 +426,12 @@ export default function ProfilePage() {
                           {myComments.map(c => (
                             <li key={c.id}>
                               <button onClick={() => router.push(`/place/${c.place_id}`)}
-                                className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                                className="w-full text-left px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition-colors">
                                 <p className="text-[11px] font-semibold text-gray-400 truncate mb-0.5">
                                   📍 {c.places?.name ?? '장소 정보 없음'}
                                 </p>
                                 <p className="text-sm text-gray-800 leading-snug line-clamp-2">{c.content}</p>
-                                <p className="text-[10px] text-gray-300 mt-1">{formatDate(c.created_at)}</p>
+                                <p className="text-[11px] text-gray-300 mt-1">{formatDate(c.created_at)}</p>
                               </button>
                             </li>
                           ))}
@@ -449,7 +449,7 @@ export default function ProfilePage() {
                               <img src={ph.url} alt="사진" className="w-full h-full object-cover" />
                               {ph.places?.name && (
                                 <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent">
-                                  <p className="text-[10px] text-white truncate">{ph.places.name}</p>
+                                  <p className="text-[11px] text-white truncate">{ph.places.name}</p>
                                 </div>
                               )}
                             </button>
@@ -465,7 +465,7 @@ export default function ProfilePage() {
                           {myFavorites.filter(f => f.places).map(f => (
                             <li key={f.place_id}>
                               <button onClick={() => router.push(`/place/${f.place_id}`)}
-                                className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                                className="w-full text-left px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition-colors">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-sm font-semibold text-gray-800 truncate">{f.places!.name}</span>
                                   <TypeBadge type={f.places!.type} />
@@ -483,7 +483,7 @@ export default function ProfilePage() {
             {/* 로그아웃 */}
             <div className="px-4 border-t border-gray-100 pt-4 pb-4">
               <button onClick={handleLogout}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-red-500 bg-red-50 hover:bg-red-100 active:scale-[0.98] transition-all">
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-red-500 bg-red-50 hover:bg-red-100 active:scale-[0.98] transition-all">
                 로그아웃
               </button>
               <LegalNote />

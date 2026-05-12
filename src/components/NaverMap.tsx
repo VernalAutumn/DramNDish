@@ -2037,7 +2037,7 @@ export default function NaverMap() {
         >
           해외
           <span
-            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
             style={{ background: '#e5e7eb', color: '#6b7280' }}
           >
             준비중
@@ -2071,7 +2071,7 @@ export default function NaverMap() {
         >
           해외
           <span
-            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
             style={{ background: '#e5e7eb', color: '#6b7280' }}
           >
             준비중
@@ -2209,7 +2209,7 @@ export default function NaverMap() {
                     {loading ? '불러오는 중...' : `${filteredPlaces.length}개 장소${filteredPlaces.length !== places.length ? ` / 전체 ${places.length}` : ''}`}
                   </p>
                   {userLocation && (
-                    <span className="text-[10px] text-emerald-500 font-medium flex items-center gap-0.5">
+                    <span className="text-[11px] text-emerald-500 font-medium flex items-center gap-0.5">
                       <svg xmlns="http://www.w3.org/2000/svg" width="7" height="7" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
                       내 위치 기준
                     </span>
@@ -2307,7 +2307,7 @@ export default function NaverMap() {
                               {place.name}
                             </span>
                             {viewMode !== 'category' && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
                                 style={{ color: accentColor, backgroundColor: `${accentColor}18` }}>
                                 {TYPE_LABEL[place.type] ?? place.type}
                               </span>
@@ -2315,7 +2315,7 @@ export default function NaverMap() {
                             {policyBadges.map((b) => (
                               <span
                                 key={b.label}
-                                className="text-[10px] font-semibold rounded-full px-1.5 py-0.5"
+                                className="text-[11px] font-semibold rounded-full px-1.5 py-0.5"
                                 style={{ color: b.color, backgroundColor: b.bg }}
                               >
                                 {b.label}
@@ -2324,7 +2324,7 @@ export default function NaverMap() {
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             {dist !== null && (
-                              <span className="text-[10px] font-medium text-emerald-500 shrink-0">{formatDist(dist)}</span>
+                              <span className="text-[11px] font-medium text-emerald-500 shrink-0">{formatDist(dist)}</span>
                             )}
                             <span className="text-xs text-gray-400 truncate">{place.address}</span>
                           </div>
@@ -2349,7 +2349,7 @@ export default function NaverMap() {
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-gray-700">{headerLabel}</span>
-                            <span className="text-[10px] text-gray-400">{totalCount}곳</span>
+                            <span className="text-[11px] text-gray-400">{totalCount}곳</span>
                           </div>
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
                             fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -2382,7 +2382,7 @@ export default function NaverMap() {
                           >
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-gray-800">{city}</span>
-                              <span className="text-[10px] text-gray-400">{totalCount}곳</span>
+                              <span className="text-[11px] text-gray-400">{totalCount}곳</span>
                             </div>
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
                               fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -2403,7 +2403,7 @@ export default function NaverMap() {
                                 >
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-[11px] font-semibold text-gray-600">{gu}</span>
-                                    <span className="text-[10px] text-gray-400">{items.length}곳</span>
+                                    <span className="text-[11px] text-gray-400">{items.length}곳</span>
                                   </div>
                                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -2531,14 +2531,14 @@ export default function NaverMap() {
                                   <span className="text-sm font-medium truncate" style={isActive ? { color } : { color: '#1f2937' }}>
                                     {place.name}
                                   </span>
-                                  <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-auto"
+                                  <span className="shrink-0 text-[11px] font-bold px-2.5 py-0.5 rounded-full ml-auto"
                                     style={{ color, backgroundColor: color + '18' }}>
                                     {TYPE_LABEL[place.type] ?? place.type}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1.5 mt-0.5 ml-[19px]">
                                   {dist !== null && (
-                                    <span className="text-[10px] font-medium text-emerald-500 shrink-0">{formatDist(dist)}</span>
+                                    <span className="text-[11px] font-medium text-emerald-500 shrink-0">{formatDist(dist)}</span>
                                   )}
                                   {place.district && (
                                     <span className="text-[11px] text-gray-400 truncate">{place.district}</span>
@@ -2591,7 +2591,7 @@ export default function NaverMap() {
                 </button>
                 <h2 className="text-sm font-bold text-gray-900 truncate">{selectedPlace.name}</h2>
                 <span
-                  className="shrink-0 ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
+                  className="shrink-0 ml-auto px-2 py-0.5 rounded-full text-[11px] font-bold text-white"
                   style={{ backgroundColor: TYPE_COLOR[selectedPlace.type] ?? MARKER_COLOR }}
                 >
                   {TYPE_LABEL[selectedPlace.type] ?? selectedPlace.type}
@@ -2599,7 +2599,7 @@ export default function NaverMap() {
               </div>
 
               {/* ─── 면책 조항 (헤더 바로 아래 고정) ──────────────────── */}
-              <p className="px-4 py-2 text-[10px] text-gray-400 leading-relaxed border-b border-gray-50 flex-shrink-0">
+              <p className="px-4 py-2 text-[11px] text-gray-400 leading-relaxed border-b border-gray-50 flex-shrink-0">
                 자세한 사항은 네이버 지도 또는 연락을 통해 직접 확인하시길 바랍니다. 본 지도는 위치 정보만 제공하며, 이로 인한 손해를 책임지지 않습니다.
               </p>
 
@@ -2620,7 +2620,7 @@ export default function NaverMap() {
                   </button>
                 </div>
                 {selectedPlace.contributor_nickname && (
-                  <p className="text-[10px] text-text-disabled -mt-2 pl-[18px]">
+                  <p className="text-[11px] text-text-disabled -mt-2 pl-[18px]">
                     Added by {selectedPlace.contributor_nickname}
                   </p>
                 )}
@@ -2973,7 +2973,7 @@ export default function NaverMap() {
                             onClick={() => { if (!deletingPhotoId) setSelectedPhoto(photo) }}
                           />
                           <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-between">
-                            <p className="text-[9px] text-white truncate">{photo.nickname}</p>
+                            <p className="text-[11px] text-white truncate">{photo.nickname}</p>
                           </div>
                           {/* 삭제 버튼: 본인·익명 → 우상단 */}
                           {deletingPhotoId !== photo.id && canDelete(photo.user_id) && (
@@ -3010,18 +3010,18 @@ export default function NaverMap() {
                                 placeholder="비밀번호"
                                 maxLength={20}
                                 autoFocus
-                                className="w-full text-[10px] rounded-lg px-2 py-1 outline-none bg-white/90 text-gray-800 placeholder:text-gray-400"
+                                className="w-full text-[11px] rounded-lg px-2 py-1 outline-none bg-white/90 text-gray-800 placeholder:text-gray-400"
                               />
                               <div className="flex gap-1 w-full">
                                 <button
                                   onClick={handleConfirmDeletePhoto}
-                                  className="flex-1 py-1 rounded-lg text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                                  className="flex-1 py-1 rounded-lg text-[11px] font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
                                 >
                                   삭제
                                 </button>
                                 <button
                                   onClick={() => { setDeletingPhotoId(null); setDeleteInputCode('') }}
-                                  className="flex-1 py-1 rounded-lg text-[10px] font-bold text-gray-700 bg-white/80 hover:bg-white transition-colors"
+                                  className="flex-1 py-1 rounded-lg text-[11px] font-bold text-gray-700 bg-white/80 hover:bg-white transition-colors"
                                 >
                                   취소
                                 </button>
@@ -3052,7 +3052,7 @@ export default function NaverMap() {
                       <p className="text-xs text-red-500">비밀번호를 입력해 주세요.</p>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-300">{newPanelComment.length}/200</span>
+                      <span className="text-[11px] text-gray-300">{newPanelComment.length}/200</span>
                       <button
                         onClick={handleSubmitPanelComment}
                         disabled={!newPanelComment.trim() || isSubmittingComment}
@@ -3076,7 +3076,7 @@ export default function NaverMap() {
                         <select
                           value={commentSort}
                           onChange={(e) => setCommentSort(e.target.value as 'latest' | 'oldest' | 'likes')}
-                          className="text-[10px] text-gray-400 border border-gray-200 rounded-lg px-2 py-1 outline-none bg-white cursor-pointer hover:border-gray-300 transition-colors"
+                          className="text-[11px] text-gray-400 border border-gray-200 rounded-lg px-2 py-1 outline-none bg-white cursor-pointer hover:border-gray-300 transition-colors"
                         >
                           <option value="latest">최신순</option>
                           <option value="oldest">오래된순</option>
@@ -3266,7 +3266,7 @@ export default function NaverMap() {
                   >
                     {label}
                     {!isLoadingActivity && (
-                      <span className={`ml-1 text-[10px] ${isActive ? 'text-[#BF3A21]/70' : 'text-gray-300'}`}>
+                      <span className={`ml-1 text-[11px] ${isActive ? 'text-[#BF3A21]/70' : 'text-gray-300'}`}>
                         {count}
                       </span>
                     )}
@@ -3309,7 +3309,7 @@ export default function NaverMap() {
                           >
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-xs font-bold" style={{ color: MARKER_COLOR }}>{item.place_name}</span>
-                              <span className="text-[10px] text-gray-400">
+                              <span className="text-[11px] text-gray-400">
                                 {new Date(item.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
                               </span>
                             </div>
@@ -3338,7 +3338,7 @@ export default function NaverMap() {
                         {/* 장소명 오버레이 */}
                         <div className="absolute bottom-0 inset-x-0 px-1.5 pb-1.5 pt-4"
                              style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 100%)' }}>
-                          <p className="text-white text-[9px] font-semibold leading-tight line-clamp-1">{item.place_name}</p>
+                          <p className="text-white text-[11px] font-semibold leading-tight line-clamp-1">{item.place_name}</p>
                         </div>
                       </button>
                     ))}
@@ -3440,13 +3440,13 @@ export default function NaverMap() {
               className="flex items-center gap-2.5 px-4 py-2 rounded-full"
               style={{ background: 'rgba(255,255,255,0.1)' }}
             >
-              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
                    style={{ backgroundColor: MARKER_COLOR }}>
                 {selectedPhoto.nickname[0]?.toUpperCase() ?? '?'}
               </div>
               <span className="text-white text-xs font-semibold">{selectedPhoto.nickname}</span>
-              <span className="text-white/50 text-[10px]">·</span>
-              <span className="text-white/70 text-[10px]">
+              <span className="text-white/50 text-[11px]">·</span>
+              <span className="text-white/70 text-[11px]">
                 {new Date(selectedPhoto.created_at).toLocaleDateString('ko-KR', {
                   year: 'numeric', month: '2-digit', day: '2-digit',
                 }).replace(/\. /g, '.').replace(/\.$/, '')}
@@ -3558,7 +3558,7 @@ export default function NaverMap() {
       )}
 
       {/* ── 우측 상단 통합 컨트롤 패널 (모바일: 바텀탭으로 대체하여 숨김) ── */}
-      <div className="hidden md:flex absolute md:top-4 right-4 z-30 flex-col items-end gap-2 w-[268px]">
+      <div className="hidden md:flex absolute md:top-4 right-4 z-30 flex-col items-end gap-2 w-[320px]">
 
         {/* 프로필 카드 – auth 상태에 따라 내부가 3단계로 변함 */}
         <div className={`panel w-full rounded-2xl overflow-hidden transition-shadow duration-300 ${(!currentUser && (commentPasswordError || photoPasswordError)) ? 'ring-2 ring-red-500' : ''}`}
@@ -3591,12 +3591,12 @@ export default function NaverMap() {
                 return appNick ? (
                   <>
                     <p className="text-xs font-bold text-gray-800 truncate leading-tight">{appNick}</p>
-                    <p className="text-[10px] text-gray-400 leading-tight mt-0.5">마이페이지</p>
+                    <p className="text-[11px] text-gray-400 leading-tight mt-0.5">마이페이지</p>
                   </>
                 ) : (
                   <>
                     <p className="text-xs font-bold text-amber-600 truncate leading-tight">닉네임 설정 필요</p>
-                    <p className="text-[10px] text-gray-400 leading-tight mt-0.5">Google 로그인 완료</p>
+                    <p className="text-[11px] text-gray-400 leading-tight mt-0.5">Google 로그인 완료</p>
                   </>
                 )
               })() : (
@@ -3604,7 +3604,7 @@ export default function NaverMap() {
                   <p className="text-xs font-bold text-gray-800 truncate leading-tight">
                     {myNickname || <span className="text-gray-400 font-normal">닉네임 설정 안 됨</span>}
                   </p>
-                  <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+                  <p className="text-[11px] text-gray-400 leading-tight mt-0.5">
                     {myCode ? '🔒 비밀번호 설정됨' : '⚠︎ 비밀번호 미설정'}
                   </p>
                 </>
@@ -3618,26 +3618,26 @@ export default function NaverMap() {
           </button>
 
           {showProfileCard && (
-            <div className="border-t border-gray-100">
+            <div className="border-t border-gray-100 px-3 py-3">
 
               {/* ══ 케이스 A: 비로그인 ══ 익명 닉네임/비밀번호 + 구글 로그인 버튼 */}
               {!currentUser && (
-                <div className="px-3.5 pb-3.5 pt-2.5 space-y-2">
+                <div className="space-y-2">
                   {/* 닉네임 */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-400 w-14 shrink-0">닉네임</span>
+                    <span className="text-[11px] text-gray-400 w-14 shrink-0">닉네임</span>
                     <input
                       type="text"
                       value={myNickname ?? ''}
                       onChange={(e) => { setMyNickname(e.target.value); localStorage.setItem('tastamp_nickname', e.target.value) }}
                       placeholder="익명"
                       maxLength={20}
-                      className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none transition-colors focus:border-gray-400"
+                      className="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none transition-colors focus:border-gray-400"
                     />
                   </div>
                   {/* 비밀번호 */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-400 w-14 shrink-0">비밀번호</span>
+                    <span className="text-[11px] text-gray-400 w-14 shrink-0">비밀번호</span>
                     <div className="flex-1 relative min-w-0">
                       <input
                         type={showPasswordText ? 'text' : 'password'}
@@ -3645,7 +3645,7 @@ export default function NaverMap() {
                         onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false) } }}
                         placeholder="콘텐츠 삭제 시 사용"
                         maxLength={20}
-                        className={`w-full text-xs border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
+                        className={`w-full text-sm border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
                       />
                       <button
                         type="button"
@@ -3665,13 +3665,13 @@ export default function NaverMap() {
                       </button>
                     </div>
                   </div>
-                  <p className="text-[9px] text-gray-300 leading-relaxed">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
+                  <p className="text-[11px] text-gray-300 leading-relaxed">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
                   {/* 구분선 + 구글 로그인 */}
                   <div className="pt-1 border-t border-gray-100">
-                    <p className="text-[9px] text-gray-400 text-center mb-2">또는 계정으로 로그인</p>
+                    <p className="text-[11px] text-gray-400 text-center mb-2">또는 계정으로 로그인</p>
                     <button
                       onClick={handleGoogleLogin}
-                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 hover:bg-white hover:shadow-sm active:scale-[0.98] transition-all"
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold text-gray-700 bg-gray-50 border border-gray-200 hover:bg-white hover:shadow-sm active:scale-[0.98] transition-all"
                     >
                       <svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -3682,7 +3682,7 @@ export default function NaverMap() {
                       Google로 로그인
                     </button>
                     {/* 법적 고지 */}
-                    <p className="text-[9px] text-gray-400 leading-relaxed text-center mt-2">
+                    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
                       본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
                       주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
                       <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
@@ -3699,18 +3699,18 @@ export default function NaverMap() {
 
               {/* ══ 케이스 B: 로그인 + 닉네임 미설정 ══ → 모달로 분리, 여기엔 간단한 안내만 */}
               {currentUser && !(currentUser.user_metadata?.app_nickname as string | undefined) && (
-                <div className="px-3.5 pb-3 pt-2.5 space-y-2">
-                  <p className="text-[10px] text-amber-600 font-semibold">닉네임 설정이 필요합니다</p>
+                <div className="space-y-2">
+                  <p className="text-[11px] text-amber-600 font-semibold">닉네임 설정이 필요합니다</p>
                   <button
                     onClick={() => setShowNicknameModal(true)}
-                    className="w-full py-2 rounded-xl text-xs font-bold text-white active:scale-[0.98] transition-all"
+                    className="w-full py-2 rounded-xl text-sm font-bold text-white active:scale-[0.98] transition-all"
                     style={{ backgroundColor: MARKER_COLOR }}
                   >
                     닉네임 설정하기
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="w-full text-[10px] text-gray-400 hover:text-red-500 transition-colors py-0.5"
+                    className="w-full text-[11px] text-gray-400 hover:text-red-500 transition-colors py-0.5"
                   >
                     로그아웃
                   </button>
@@ -3719,10 +3719,10 @@ export default function NaverMap() {
 
               {/* ══ 케이스 C: 로그인 완료 (닉네임 설정됨) ══ 대시보드 */}
               {currentUser && !!(currentUser.user_metadata?.app_nickname as string | undefined) && (
-                <div className="py-3 space-y-1">
+                <div className="space-y-1">
 
                   {/* 닉네임 수정 영역 */}
-                  <div className="px-3.5 pb-2">
+                  <div className="pb-2">
                     {isEditingNickPC ? (
                       <div className="space-y-1.5">
                         <div className="flex gap-1.5">
@@ -3737,12 +3737,12 @@ export default function NaverMap() {
                             maxLength={20}
                             autoFocus
                             placeholder="새 닉네임 (최대 20자)"
-                            className="flex-1 min-w-0 text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#BF3A21] bg-white transition-colors"
+                            className="flex-1 min-w-0 text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#BF3A21] bg-white transition-colors"
                           />
                           <button
                             onClick={handleUpdateNicknamePC}
                             disabled={isSavingEditPC}
-                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-white disabled:opacity-50 transition-all"
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50 transition-all"
                             style={{ backgroundColor: MARKER_COLOR }}
                           >
                             {isSavingEditPC ? '…' : '저장'}
@@ -3750,13 +3750,13 @@ export default function NaverMap() {
                           <button
                             onClick={() => { setIsEditingNickPC(false); setEditNickErrorPC('') }}
                             disabled={isSavingEditPC}
-                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 transition-all"
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 transition-all"
                           >
                             취소
                           </button>
                         </div>
                         {editNickErrorPC && (
-                          <p className="text-[10px] text-red-500 pl-0.5">{editNickErrorPC}</p>
+                          <p className="text-xs text-red-500 pl-0.5">{editNickErrorPC}</p>
                         )}
                       </div>
                     ) : (
@@ -3766,7 +3766,7 @@ export default function NaverMap() {
                           setEditNickValuePC(appNick ?? '')
                           setIsEditingNickPC(true)
                         }}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-100 transition-colors"
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-100 transition-colors"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
                           fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -3789,7 +3789,7 @@ export default function NaverMap() {
                       <button
                         key={key}
                         onClick={() => setPcProfileTab(key)}
-                        className={`flex-1 py-2 text-[10px] font-semibold transition-colors ${
+                        className={`flex-1 py-2 text-xs font-semibold transition-colors ${
                           pcProfileTab === key
                             ? 'text-[#BF3A21] border-b-2 border-[#BF3A21]'
                             : 'text-gray-400 hover:text-gray-600'
@@ -3802,22 +3802,22 @@ export default function NaverMap() {
 
                   {/* 탭 콘텐츠 */}
                   {(isLoadingPCExtra || isLoadingActivity) ? (
-                    <p className="text-[10px] text-gray-400 text-center py-4">불러오는 중...</p>
+                    <p className="text-xs text-gray-400 text-center py-6">불러오는 중...</p>
                   ) : (
-                    <div className="max-h-56 overflow-y-auto pb-1">
+                    <div className="max-h-80 overflow-y-auto">
                       {/* 장소 탭 */}
                       {pcProfileTab === 'places' && (
                         pcPlaces.length === 0
-                          ? <p className="text-[10px] text-gray-400 text-center py-4">등록한 장소가 없습니다.</p>
-                          : <div className="divide-y divide-gray-50">
+                          ? <p className="text-xs text-gray-400 text-center py-6">등록한 장소가 없습니다.</p>
+                          : <div className="divide-y divide-gray-100">
                               {pcPlaces.map(p => (
                                 <div
                                   key={p.id}
                                   onClick={() => { setShowProfileCard(false); openDetail(p.id, LIST_CLICK_ZOOM) }}
-                                  className="px-3.5 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
                                 >
-                                  <p className="text-[11px] font-semibold text-gray-800 truncate">{p.name}</p>
-                                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.address}</p>
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
+                                  <p className="text-[11px] text-gray-400 truncate mt-1">{p.address}</p>
                                 </div>
                               ))}
                             </div>
@@ -3826,16 +3826,16 @@ export default function NaverMap() {
                       {pcProfileTab === 'comments' && (() => {
                         const items = activityList.filter(i => i.type === 'comment')
                         return items.length === 0
-                          ? <p className="text-[10px] text-gray-400 text-center py-4">작성한 코멘트가 없습니다.</p>
-                          : <div className="divide-y divide-gray-50">
+                          ? <p className="text-xs text-gray-400 text-center py-6">작성한 코멘트가 없습니다.</p>
+                          : <div className="divide-y divide-gray-100">
                               {items.map(i => (
                                 <div
                                   key={i.id}
                                   onClick={() => { setShowProfileCard(false); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
-                                  className="px-3.5 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
                                 >
-                                  <p className="text-[10px] text-gray-400 mb-0.5">📍 {i.place_name}</p>
-                                  <p className="text-[11px] text-gray-700 line-clamp-2">{i.content}</p>
+                                  <p className="text-[11px] text-gray-400 mb-1">📍 {i.place_name}</p>
+                                  <p className="text-xs text-gray-700 line-clamp-2">{i.content}</p>
                                 </div>
                               ))}
                             </div>
@@ -3844,8 +3844,8 @@ export default function NaverMap() {
                       {pcProfileTab === 'photos' && (() => {
                         const items = activityList.filter(i => i.type === 'photo')
                         return items.length === 0
-                          ? <p className="text-[10px] text-gray-400 text-center py-4">등록한 사진이 없습니다.</p>
-                          : <div className="grid grid-cols-3 gap-1 p-2">
+                          ? <p className="text-xs text-gray-400 text-center py-6">등록한 사진이 없습니다.</p>
+                          : <div className="grid grid-cols-3 gap-2 p-4">
                               {items.map(i => (
                                 <div
                                   key={i.id}
@@ -3853,7 +3853,7 @@ export default function NaverMap() {
                                   className="relative aspect-square cursor-pointer"
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={i.url} alt="" className="w-full h-full object-cover rounded hover:opacity-90 transition-opacity" />
+                                  <img src={i.url} alt="" className="w-full h-full object-cover rounded-lg hover:opacity-90 transition-opacity" />
                                 </div>
                               ))}
                             </div>
@@ -3861,16 +3861,16 @@ export default function NaverMap() {
                       {/* 즐겨찾기 탭 */}
                       {pcProfileTab === 'favorites' && (
                         pcFavoritesList.length === 0
-                          ? <p className="text-[10px] text-gray-400 text-center py-4">즐겨찾기한 장소가 없습니다.</p>
-                          : <div className="divide-y divide-gray-50">
+                          ? <p className="text-xs text-gray-400 text-center py-6">즐겨찾기한 장소가 없습니다.</p>
+                          : <div className="divide-y divide-gray-100">
                               {pcFavoritesList.map(f => f.places && (
                                 <div
                                   key={f.place_id}
                                   onClick={() => { setShowProfileCard(false); openDetail(f.places!.id, LIST_CLICK_ZOOM) }}
-                                  className="px-3.5 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
                                 >
-                                  <p className="text-[11px] font-semibold text-gray-800 truncate">{f.places.name}</p>
-                                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{f.places.address}</p>
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{f.places.name}</p>
+                                  <p className="text-[11px] text-gray-400 truncate mt-1">{f.places.address}</p>
                                 </div>
                               ))}
                             </div>
@@ -3879,16 +3879,16 @@ export default function NaverMap() {
                   )}
 
                   {/* 구분선 + 로그아웃 */}
-                  <div className="px-3.5 pt-1.5">
-                    <div className="border-t border-gray-100 mb-2" />
+                  <div>
+                    <div className="border-t border-gray-100 mb-3" />
                     <button
                       onClick={handleLogout}
-                      className="w-full py-2 text-xs font-semibold text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 transition-colors rounded-xl"
+                      className="w-full py-2 text-sm font-semibold text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 transition-colors rounded-xl"
                     >
                       로그아웃
                     </button>
                     {/* 법적 고지 */}
-                    <p className="text-[9px] text-gray-400 leading-relaxed text-center mt-2">
+                    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
                       본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
                       주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
                       <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
