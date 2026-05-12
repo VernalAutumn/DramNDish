@@ -107,6 +107,40 @@ export default function PlaceDetailClient({
   const [isSubmitting,    setIsSubmitting]    = useState(false)
   const [myNickname,      setMyNickname]      = useState<string | null>(null)
 
+  // ─── 신고 (장소/댓글/사진 공용) ────────────────────────────────────────
+  const [reportTarget,       setReportTarget]       = useState<{ id: string; type: 'place' | 'comment' | 'photo' } | null>(null)
+  const [reportReason,       setReportReason]       = useState('')
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false)
+  const [reportDone,         setReportDone]         = useState(false)
+
+  const openReport = (id: string, type: 'place' | 'comment' | 'photo') => {
+    setReportTarget({ id, type })
+    setReportReason('')
+    setReportDone(false)
+  }
+  const closeReport = () => { setReportTarget(null); setReportReason(''); setReportDone(false) }
+
+  const handleSubmitReport = async () => {
+    if (!reportTarget) return
+    const reason = reportReason.trim()
+    if (!reason) return
+    setIsSubmittingReport(true)
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reported_item_id: reportTarget.id, item_type: reportTarget.type, reason }),
+      })
+      if (res.ok) {
+        setReportDone(true)
+        setReportReason('')
+        setTimeout(closeReport, 1500)
+      }
+    } finally {
+      setIsSubmittingReport(false)
+    }
+  }
+
   // ─── 카테고리 태그 (식당 대분류) ─────────────────────────────────────────
   const categoryTag = initialTags.find(t => t.type === 'category')
 
@@ -451,7 +485,16 @@ export default function PlaceDetailClient({
             <svg className="shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
-            <span className="leading-snug">{place.address}</span>
+            <span className="leading-snug flex-1">{place.address}</span>
+            <button
+              onClick={() => openReport(place.id, 'place')}
+              className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-full text-label text-text-tertiary hover:text-red-400 hover:bg-red-50 transition-colors ml-1"
+              title="장소 신고">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+              </svg>
+              신고
+            </button>
           </div>
           {(place.city || place.district) && (
             <p className="mt-1 text-xs text-gray-400 pl-[18px]">
@@ -627,8 +670,16 @@ export default function PlaceDetailClient({
                   onClick={() => setLightboxPhoto(photo)}
                 >
                   <img src={photo.url} alt={`${photo.nickname}님의 사진`} className="w-full h-full object-cover"/>
-                  <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent">
+                  <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-between">
                     <p className="text-[10px] text-white font-medium truncate">{photo.nickname}</p>
+                    <button
+                      onClick={e => { e.stopPropagation(); openReport(photo.id, 'photo') }}
+                      className="shrink-0 p-1 text-white/60 hover:text-red-300 transition-colors"
+                      title="사진 신고">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -702,6 +753,15 @@ export default function PlaceDetailClient({
                         <p className="text-sm text-gray-700 mt-0.5 leading-snug break-words">{c.content}</p>
                       </div>
                     </div>
+                    {c.nickname !== myNickname && (
+                      <button onClick={() => openReport(c.id, 'comment')}
+                        className="shrink-0 p-1.5 text-text-disabled hover:text-red-400 transition-colors"
+                        title="댓글 신고">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                        </svg>
+                      </button>
+                    )}
                     {myNickname && c.nickname === myNickname && (
                       <button onClick={() => handleDeleteComment(c.id)}
                         className="shrink-0 p-1 text-gray-300 hover:text-red-400 transition-colors">
@@ -721,10 +781,58 @@ export default function PlaceDetailClient({
         </div>
 
         {/* 면책 조항 */}
-        <p className="text-[10px] text-gray-400 text-center px-4 pb-4 leading-relaxed">
+        <p className="text-[10px] text-gray-400 text-center px-4 pb-6 leading-relaxed">
           자세한 사항은 네이버 지도 또는 연락을 통해 직접 확인하시길 바랍니다.<br/>
           본 지도는 위치 정보만 제공하며, 이로 인한 손해를 책임지지 않습니다.
         </p>
+
+        {/* 신고 모달 (장소/댓글/사진 공용) */}
+        {reportTarget && (
+          <div className="fixed inset-0 z-[70] bg-black/60 flex items-end sm:items-center justify-center"
+            onClick={closeReport}>
+            <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 mx-0 sm:mx-4"
+              onClick={e => e.stopPropagation()}>
+              {reportDone ? (
+                <div className="text-center py-4">
+                  <p className="text-2xl mb-2">✅</p>
+                  <p className="text-sm font-semibold text-gray-700">신고가 접수되었습니다.</p>
+                  <p className="text-xs text-gray-400 mt-1">검토 후 조치하겠습니다.</p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-sm font-bold text-gray-800 mb-1">
+                    {{ place: '장소', comment: '댓글', photo: '사진' }[reportTarget.type]} 신고
+                  </h3>
+                  <p className="text-xs text-gray-400 mb-3">잘못된 정보나 부적절한 내용을 신고해주세요.</p>
+                  <textarea
+                    value={reportReason}
+                    onChange={e => setReportReason(e.target.value)}
+                    maxLength={500}
+                    rows={4}
+                    placeholder="신고 사유를 입력해 주세요 (최대 500자)"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-[#BF3A21] transition-colors"
+                  />
+                  <div className="flex items-center justify-between mt-1 mb-4">
+                    <span className="text-xs text-gray-400">{reportReason.length}/500</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={closeReport}
+                      className="flex-1 py-2 rounded-full text-xs font-bold text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSubmitReport}
+                      disabled={!reportReason.trim() || isSubmittingReport}
+                      className="flex-1 py-2 rounded-full text-xs font-bold text-white disabled:opacity-40 transition-opacity"
+                      style={{ backgroundColor: BRAND }}>
+                      {isSubmittingReport ? '제출 중...' : '신고 제출'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

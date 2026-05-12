@@ -268,7 +268,11 @@ export default function NaverMap() {
   // ─── state: auth ─────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [loginToast,    setLoginToast]    = useState(false)
-  const [reportToast,   setReportToast]   = useState(false)
+  const [reportToast,          setReportToast]          = useState(false)
+  const [showPlaceReportModal, setShowPlaceReportModal] = useState(false)
+  const [placeReportReason,    setPlaceReportReason]    = useState('')
+  const [isSubmittingPlaceRep, setIsSubmittingPlaceRep] = useState(false)
+  const [placeReportDone,      setPlaceReportDone]      = useState(false)
   const [overseasToast, setOverseasToast] = useState(false)
   const supabase     = useRef(createClient()).current
   const searchParams = useSearchParams()
@@ -1157,6 +1161,30 @@ export default function NaverMap() {
     }
   }, [])
 
+  const handleReportPlace = useCallback(async () => {
+    const reason = placeReportReason.trim()
+    if (!reason || !selectedPlace) return
+    setIsSubmittingPlaceRep(true)
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reported_item_id: selectedPlace.id, item_type: 'place', reason }),
+      })
+      if (!res.ok) throw new Error()
+      setPlaceReportDone(true)
+      setPlaceReportReason('')
+      setTimeout(() => {
+        setShowPlaceReportModal(false)
+        setPlaceReportDone(false)
+      }, 1500)
+    } catch {
+      alert('신고 접수 중 오류가 발생했습니다.')
+    } finally {
+      setIsSubmittingPlaceRep(false)
+    }
+  }, [placeReportReason, selectedPlace])
+
   // ─── 코멘트 삭제 (소유자 즉시 삭제 / 익명 인라인 폼) ─────────────────
   const handleDeleteComment = async (comment: Comment) => {
     if (!selectedPlace) return
@@ -1884,6 +1912,59 @@ export default function NaverMap() {
         </div>
       )}
 
+      {/* ── 장소 신고 모달 ──────────────────────────────────────────────── */}
+      {showPlaceReportModal && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/60 flex items-end sm:items-center justify-center"
+          onClick={() => { setShowPlaceReportModal(false); setPlaceReportReason(''); setPlaceReportDone(false) }}
+        >
+          <div
+            className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 mx-0 sm:mx-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {placeReportDone ? (
+              <div className="text-center py-4">
+                <p className="text-2xl mb-2">✅</p>
+                <p className="text-sm font-semibold text-gray-700">신고가 접수되었습니다.</p>
+                <p className="text-xs text-gray-400 mt-1">검토 후 조치하겠습니다.</p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-sm font-bold text-gray-800 mb-1">장소 신고</h3>
+                <p className="text-xs text-gray-400 mb-3">잘못된 정보나 부적절한 내용을 신고해주세요.</p>
+                <textarea
+                  value={placeReportReason}
+                  onChange={e => setPlaceReportReason(e.target.value)}
+                  maxLength={500}
+                  rows={4}
+                  placeholder="신고 사유를 입력해 주세요 (최대 500자)"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-[#BF3A21] transition-colors"
+                />
+                <div className="flex items-center justify-between mt-1 mb-4">
+                  <span className="text-xs text-gray-400">{placeReportReason.length}/500</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowPlaceReportModal(false); setPlaceReportReason('') }}
+                    className="flex-1 py-2 rounded-full text-xs font-bold text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handleReportPlace}
+                    disabled={!placeReportReason.trim() || isSubmittingPlaceRep}
+                    className="flex-1 py-2 rounded-full text-xs font-bold text-white disabled:opacity-40 transition-opacity"
+                    style={{ backgroundColor: '#BF3A21' }}
+                  >
+                    {isSubmittingPlaceRep ? '제출 중...' : '신고 제출'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── 해외 준비중 토스트 ──────────────────────────────────────────── */}
       {overseasToast && (
         <div
@@ -2489,7 +2570,16 @@ export default function NaverMap() {
                   <svg className="shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                   </svg>
-                  <span className="leading-snug">{selectedPlace.address}</span>
+                  <span className="leading-snug flex-1">{selectedPlace.address}</span>
+                  <button
+                    onClick={() => setShowPlaceReportModal(true)}
+                    className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-full text-[11px] text-text-tertiary hover:text-red-400 hover:bg-red-50 transition-colors ml-1"
+                    title="장소 신고">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                    </svg>
+                    신고
+                  </button>
                 </div>
                 {/* 액션 버튼 (즐겨찾기 + 지도 보기) */}
                 <div className="flex gap-2">

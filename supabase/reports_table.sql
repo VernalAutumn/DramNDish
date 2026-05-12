@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.reports (
   id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   reporter_id        UUID        REFERENCES auth.users(id) ON DELETE SET NULL,  -- null 허용: 비회원 신고
   reported_item_id   TEXT        NOT NULL,                                       -- 코멘트/사진 UUID
-  item_type          TEXT        NOT NULL CHECK (item_type IN ('comment', 'photo')),
+  item_type          TEXT        NOT NULL CHECK (item_type IN ('comment', 'photo', 'place')),
   reason             TEXT        NOT NULL CHECK (char_length(reason) BETWEEN 1 AND 500),
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
