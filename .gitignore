@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Claude Code (skills, roadmap, session data)
-.claude/
+# Claude Code — skills/session data 제외, ROADMAP.md는 추적
+.claude/*
+!.claude/ROADMAP.md
