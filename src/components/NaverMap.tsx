@@ -345,6 +345,11 @@ export default function NaverMap() {
   const [editCoverCharge,   setEditCoverCharge]   = useState('')
   const [isSavingPlaceEdit, setIsSavingPlaceEdit] = useState(false)
 
+  // ─── state: 소셜 리액션 ──────────────────────────────────────────────────
+  const [reactionCounts, setReactionCounts] = useState({ visit_again: 0, no_visit: 0 })
+  const [myReaction,     setMyReaction]     = useState<'visit_again' | 'no_visit' | null>(null)
+  const [isReacting,     setIsReacting]     = useState(false)
+
   // ─── state: 우측 컨트롤 패널 ─────────────────────────────────────────────
   const [showProfileCard,  setShowProfileCard]  = useState(false)
   const [showPasswordText, setShowPasswordText] = useState(false)
@@ -668,19 +673,27 @@ export default function NaverMap() {
     setEditCorkageFee(place.corkage_fee != null ? String(place.corkage_fee) : '')
     setShowCoverEdit(false)
     setEditCoverCharge(place.cover_charge != null ? String(place.cover_charge) : '')
+    // 리액션 초기화
+    setReactionCounts({ visit_again: 0, no_visit: 0 })
+    setMyReaction(null)
+    setIsReacting(false)
     setLoadingTags(true)
 
     try {
-      const [tagsRes, photosRes, commentsRes] = await Promise.all([
+      const [tagsRes, photosRes, commentsRes, reactionsRes] = await Promise.all([
         fetch(`/api/places/${place.id}/tags`),
         fetch(`/api/places/${place.id}/photos`),
         fetch(`/api/places/${place.id}/comments`),
+        fetch(`/api/places/${place.id}/reactions`),
       ])
-      const tagsData     = await tagsRes.json()
-      const photosData   = await photosRes.json()
-      const commentsData = await commentsRes.json()
+      const tagsData      = await tagsRes.json()
+      const photosData    = await photosRes.json()
+      const commentsData  = await commentsRes.json()
+      const reactionsData = await reactionsRes.json()
       setSelectedTags(Array.isArray(tagsData)   ? tagsData   : [])
       setPhotos(Array.isArray(photosData)        ? photosData : [])
+      setReactionCounts({ visit_again: reactionsData.visit_again ?? 0, no_visit: reactionsData.no_visit ?? 0 })
+      setMyReaction(reactionsData.my_reaction ?? null)
       const loadedComments: Comment[] = Array.isArray(commentsData) ? commentsData : []
       setComments(loadedComments)
       // localStorage에서 이미 투표한 코멘트 복원
@@ -998,6 +1011,41 @@ export default function NaverMap() {
     } finally {
       isFavingRef.current = false
     }
+  }
+
+  // ─── 리액션 토글 (상세 패널) ─────────────────────────────────────────────
+  const handleReaction = async (type: 'visit_again' | 'no_visit') => {
+    if (!currentUser) { showLoginRequired(); return }
+    if (isReacting || !selectedPlace) return
+    const placeId = selectedPlace.id
+    const next = myReaction === type ? null : type
+    setIsReacting(true)
+    // 낙관적 업데이트
+    setReactionCounts(prev => {
+      const updated = { ...prev }
+      if (myReaction)  updated[myReaction]  = Math.max(0, updated[myReaction]  - 1)
+      if (next)        updated[next]        = updated[next] + 1
+      return updated
+    })
+    const prevReaction = myReaction
+    setMyReaction(next)
+    try {
+      const res = await fetch(`/api/places/${placeId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reaction_type: next }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      // 롤백
+      setReactionCounts(prev => {
+        const rolled = { ...prev }
+        if (next)          rolled[next]          = Math.max(0, rolled[next]          - 1)
+        if (prevReaction)  rolled[prevReaction]  = rolled[prevReaction] + 1
+        return rolled
+      })
+      setMyReaction(prevReaction)
+    } finally { setIsReacting(false) }
   }
 
   // ─── 태그 투표 ──────────────────────────────────────────────────────────
@@ -2651,6 +2699,39 @@ export default function NaverMap() {
                     </svg>
                     <span>지도 보기</span>
                   </a>
+                </div>
+
+                {/* 소셜 리액션 (재방문 의사) */}
+                <div className="card p-3">
+                  <p className="text-label font-semibold text-text-secondary mb-2.5">재방문 의사</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleReaction('visit_again')}
+                      disabled={isReacting}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-sm font-bold border-2 transition-all active:scale-95 disabled:opacity-60 ${
+                        myReaction === 'visit_again'
+                          ? 'text-white border-transparent'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-[#22c55e] hover:text-[#22c55e]'
+                      }`}
+                      style={myReaction === 'visit_again' ? { backgroundColor: '#22c55e', borderColor: '#22c55e' } : {}}
+                    >
+                      <span className="text-sm leading-none">👍</span>
+                      <span>있어요{reactionCounts.visit_again > 0 && <span className="ml-1 opacity-80">({reactionCounts.visit_again})</span>}</span>
+                    </button>
+                    <button
+                      onClick={() => handleReaction('no_visit')}
+                      disabled={isReacting}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-sm font-bold border-2 transition-all active:scale-95 disabled:opacity-60 ${
+                        myReaction === 'no_visit'
+                          ? 'text-white border-transparent'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-[#ef4444] hover:text-[#ef4444]'
+                      }`}
+                      style={myReaction === 'no_visit' ? { backgroundColor: '#ef4444', borderColor: '#ef4444' } : {}}
+                    >
+                      <span className="text-sm leading-none">👎</span>
+                      <span>없어요{reactionCounts.no_visit > 0 && <span className="ml-1 opacity-80">({reactionCounts.no_visit})</span>}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* 카테고리 배지 (식당 전용, 정적 표시) */}

@@ -108,6 +108,11 @@ export default function PlaceDetailClient({
   const [isSubmitting,    setIsSubmitting]    = useState(false)
   const [myNickname,      setMyNickname]      = useState<string | null>(null)
 
+  // ─── 소셜 리액션 (재방문 의사) ──────────────────────────────────────────
+  const [reactionCounts,   setReactionCounts]   = useState({ visit_again: 0, no_visit: 0 })
+  const [myReaction,       setMyReaction]       = useState<'visit_again' | 'no_visit' | null>(null)
+  const [isReacting,       setIsReacting]       = useState(false)
+
   // ─── 신고 (장소/댓글/사진 공용) ────────────────────────────────────────
   const [reportTarget,       setReportTarget]       = useState<{ id: string; type: 'place' | 'comment' | 'photo' } | null>(null)
   const [reportReason,       setReportReason]       = useState('')
@@ -180,6 +185,17 @@ export default function PlaceDetailClient({
     return () => subscription.unsubscribe()
   }, [place.id, supabase])
 
+  // ─── 리액션 초기 로드 ───────────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`/api/places/${place.id}/reactions`)
+      .then(r => r.json())
+      .then(data => {
+        setReactionCounts({ visit_again: data.visit_again ?? 0, no_visit: data.no_visit ?? 0 })
+        setMyReaction(data.my_reaction ?? null)
+      })
+      .catch(() => {})
+  }, [place.id])
+
   useEffect(() => { if (showPaymentInput) paymentInputRef.current?.focus() }, [showPaymentInput])
   useEffect(() => { if (showTagInput)     tagInputRef.current?.focus()     }, [showTagInput])
 
@@ -222,6 +238,44 @@ export default function PlaceDetailClient({
       setIsFavorited(!newFaved)
       setFavCount(c => newFaved ? Math.max(0, c - 1) : c + 1)
     } finally { setIsFaving(false) }
+  }
+
+  // ─── 리액션 토글 ────────────────────────────────────────────────────────
+  const handleReaction = async (type: 'visit_again' | 'no_visit') => {
+    if (!currentUser) {
+      setLoginToast(true)
+      setTimeout(() => setLoginToast(false), 3500)
+      return
+    }
+    if (isReacting) return
+    // 같은 타입 재클릭 → 취소, 다른 타입 → 변경
+    const next = myReaction === type ? null : type
+    setIsReacting(true)
+    // 낙관적 업데이트
+    setReactionCounts(prev => {
+      const updated = { ...prev }
+      if (myReaction)  updated[myReaction]  = Math.max(0, updated[myReaction]  - 1)
+      if (next)        updated[next]        = updated[next] + 1
+      return updated
+    })
+    setMyReaction(next)
+    try {
+      const res = await fetch(`/api/places/${place.id}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reaction_type: next }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      // 실패 시 롤백
+      setReactionCounts(prev => {
+        const rolled = { ...prev }
+        if (next)       rolled[next]       = Math.max(0, rolled[next]       - 1)
+        if (myReaction) rolled[myReaction] = rolled[myReaction] + 1
+        return rolled
+      })
+      setMyReaction(myReaction)
+    } finally { setIsReacting(false) }
   }
 
   // ─── 구글 로그인 핸들러 ──────────────────────────────────────────────────
@@ -529,7 +583,40 @@ export default function PlaceDetailClient({
           </a>
         </div>
 
-        {/* ③ 도메인 특화 정보 */}
+        {/* ③ 소셜 리액션 */}
+        <div className="bg-white rounded-2xl p-4">
+          <SectionTitle>재방문 의사</SectionTitle>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleReaction('visit_again')}
+              disabled={isReacting}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold border-2 transition-all active:scale-95 disabled:opacity-60 ${
+                myReaction === 'visit_again'
+                  ? 'text-white border-transparent'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-[#22c55e] hover:text-[#22c55e]'
+              }`}
+              style={myReaction === 'visit_again' ? { backgroundColor: '#22c55e', borderColor: '#22c55e' } : {}}
+            >
+              <span className="text-base leading-none">👍</span>
+              <span>있어요{reactionCounts.visit_again > 0 && <span className="ml-1 opacity-80 font-semibold">({reactionCounts.visit_again})</span>}</span>
+            </button>
+            <button
+              onClick={() => handleReaction('no_visit')}
+              disabled={isReacting}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold border-2 transition-all active:scale-95 disabled:opacity-60 ${
+                myReaction === 'no_visit'
+                  ? 'text-white border-transparent'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-[#ef4444] hover:text-[#ef4444]'
+              }`}
+              style={myReaction === 'no_visit' ? { backgroundColor: '#ef4444', borderColor: '#ef4444' } : {}}
+            >
+              <span className="text-base leading-none">👎</span>
+              <span>없어요{reactionCounts.no_visit > 0 && <span className="ml-1 opacity-80 font-semibold">({reactionCounts.no_visit})</span>}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ④ 도메인 특화 정보 */}
 
         {/* 리쿼샵: 결제수단 */}
         {place.type === 'whisky' && (
@@ -607,7 +694,7 @@ export default function PlaceDetailClient({
           </div>
         )}
 
-        {/* ④ 일반 태그 */}
+        {/* ⑤ 일반 태그 */}
         <div className="bg-white rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <SectionTitle>태그</SectionTitle>
@@ -645,7 +732,7 @@ export default function PlaceDetailClient({
           )}
         </div>
 
-        {/* ⑤ 사진 */}
+        {/* ⑥ 사진 */}
         <div className="bg-white rounded-2xl p-4">
           <SectionTitle>사진</SectionTitle>
           <input type="file" id="photo-upload" accept="image/*" className="hidden"
@@ -693,7 +780,7 @@ export default function PlaceDetailClient({
           )}
         </div>
 
-        {/* ⑥ 코멘트 */}
+        {/* ⑦ 코멘트 */}
         <div className="bg-white rounded-2xl p-4">
           <SectionTitle>한 줄 평</SectionTitle>
 
