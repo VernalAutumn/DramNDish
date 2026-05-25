@@ -38,6 +38,8 @@ interface Place {
   corkage_fee:          number | null
   cover_charge:         number | null
   contributor_nickname: string | null
+  // 추천순 정렬 시 서버에서 주입
+  recommendation_score?: number
 }
 
 interface Tag {
@@ -365,7 +367,10 @@ export default function NaverMap() {
   const [userLocation,  setUserLocation]  = useState<{ lat: number; lng: number } | null>(null)
   const [mapReady,      setMapReady]      = useState(false)
   const [accordionOpen, setAccordionOpen] = useState<Record<string, boolean>>({})
-  const [viewMode,      setViewMode]      = useState<'distance' | 'region' | 'category'>('category')
+  const [viewMode,      setViewMode]      = useState<'recommended' | 'region' | 'category'>('category')
+  const [recommendedOrder,      setRecommendedOrder]      = useState<string[]>([])
+  const [recommendedScores,     setRecommendedScores]     = useState<Map<string, number>>(new Map())
+  const [isLoadingRecommended,  setIsLoadingRecommended]  = useState(false)
   const [categorySort,       setCategorySort]       = useState<'name' | 'distance'>('name')
   const [favoriteSort,       setFavoriteSort]       = useState<'added' | 'name' | 'distance'>('added')
   const [isFavoriteEditMode, setIsFavoriteEditMode] = useState(false)
@@ -484,6 +489,21 @@ export default function NaverMap() {
       }
     } catch { /* 네트워크 오류 무시 */ }
   }, [])
+
+  // ─── 추천순 순위 로드 ───────────────────────────────────────────────────
+  const loadRecommended = useCallback(async (force = false) => {
+    if (!force && recommendedOrder.length > 0) return
+    setIsLoadingRecommended(true)
+    try {
+      const res = await fetch('/api/places?sort=recommended')
+      if (res.ok) {
+        const data: Place[] = await res.json()
+        setRecommendedOrder(data.map((p) => p.id))
+        setRecommendedScores(new Map(data.map((p) => [p.id, p.recommendation_score ?? 0])))
+      }
+    } catch { /* 무시 */ }
+    finally { setIsLoadingRecommended(false) }
+  }, [recommendedOrder.length])
 
   // ─── 유저 통계 로드 ─────────────────────────────────────────────────────
   const loadUserStats = useCallback(async () => {
@@ -1551,6 +1571,17 @@ export default function NaverMap() {
     return new Map([...map.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])))
   }, [filteredPlaces, categorySort, userLocation])
 
+  // ─── 추천순 필터 적용 목록 ───────────────────────────────────────────────
+  const filteredRecommendedPlaces = useMemo(() => {
+    if (recommendedOrder.length === 0) return filteredPlaces
+    const orderMap = new Map(recommendedOrder.map((id, i) => [id, i]))
+    return [...filteredPlaces].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? filteredPlaces.length
+      const bi = orderMap.get(b.id) ?? filteredPlaces.length
+      return ai - bi
+    })
+  }, [filteredPlaces, recommendedOrder])
+
   // ─── 즐겨찾기 장소 목록 ─────────────────────────────────────────────────
   const favWhiskyPlaces = useMemo(() =>
     places.filter((p) => p.type === 'whisky' && favoritedIds.has(p.id)),
@@ -2266,15 +2297,15 @@ export default function NaverMap() {
                 {/* 뷰모드 탭 */}
                 <div className="flex gap-1 bg-surface-tertiary rounded-xl p-1">
                   {([
-                    { key: 'category', label: '종류별' },
-                    { key: 'distance', label: '거리순' },
-                    { key: 'region',   label: '지역별' },
+                    { key: 'category',    label: '종류별' },
+                    { key: 'recommended', label: '추천순' },
+                    { key: 'region',      label: '지역별' },
                   ] as const).map(({ key, label }) => (
                     <button
                       key={key}
                       onClick={() => {
-                        if (key === 'distance' && !userLocation) requestUserLocation()
                         setViewMode(key)
+                        if (key === 'recommended') loadRecommended()
                       }}
                       className={`flex-1 py-1.5 rounded-lg text-label font-semibold transition-all ${
                         viewMode === key
@@ -2329,6 +2360,23 @@ export default function NaverMap() {
                   </div>
                 ) : (() => {
                   // ── 공통 아이템 렌더러 ──────────────────────────────────
+                  // ── 추천 점수 배지 ──────────────────────────────────────
+                  const renderScoreBadge = (placeId: string) => {
+                    if (viewMode !== 'recommended' || recommendedScores.size === 0) return null
+                    const score = recommendedScores.get(placeId) ?? 0
+                    const label = score > 0 ? `추천 +${score}` : score < 0 ? `추천 ${score}` : '추천 0'
+                    const color = score > 0 ? '#16a34a' : score < 0 ? '#ef4444' : '#9ca3af'
+                    const bg    = score > 0 ? '#f0fdf4' : score < 0 ? '#fef2f2' : '#f9fafb'
+                    return (
+                      <span
+                        className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ml-auto"
+                        style={{ color, backgroundColor: bg }}
+                      >
+                        {label}
+                      </span>
+                    )
+                  }
+
                   const renderItem = (place: typeof distanceSortedPlaces[0]) => {
                     const dist        = userLocation ? haversine(userLocation.lat, userLocation.lng, place.lat, place.lng) : null
                     const accentColor = TYPE_COLOR[place.type] ?? MARKER_COLOR
@@ -2369,6 +2417,7 @@ export default function NaverMap() {
                                 {b.label}
                               </span>
                             ))}
+                            {renderScoreBadge(place.id)}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             {dist !== null && (
@@ -2475,11 +2524,15 @@ export default function NaverMap() {
                         Array.from(groupedByCategory.entries()),
                         (k) => TYPE_LABEL[k] ?? k
                       )}
-                      {/* ── 거리순: 단순 일렬 나열 ── */}
-                      {viewMode === 'distance' && (
-                        <ul className="divide-y divide-gray-50">
-                          {distanceSortedPlaces.map(renderItem)}
-                        </ul>
+                      {/* ── 추천순: 재방문 의사 점수 기준 일렬 나열 ── */}
+                      {viewMode === 'recommended' && (
+                        isLoadingRecommended ? (
+                          <p className="px-5 py-6 text-center text-sm text-gray-400">추천순 로딩 중...</p>
+                        ) : (
+                          <ul className="divide-y divide-gray-50">
+                            {filteredRecommendedPlaces.map(renderItem)}
+                          </ul>
+                        )
                       )}
                       {/* ── 지역별 2-Depth 아코디언 ── */}
                       {viewMode === 'region' && renderRegionAccordion()}

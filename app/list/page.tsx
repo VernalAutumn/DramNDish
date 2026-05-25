@@ -28,6 +28,7 @@ interface Place {
   cover_charge:   number | null
   contributor_nickname: string | null
   tags?:          PlaceTag[]
+  recommendation_score?: number
 }
 
 // ── 상수 ──────────────────────────────────────────────────────────────────
@@ -75,11 +76,13 @@ function PlaceRow({
   favIds,
   userLocation,
   onClick,
+  score,
 }: {
   place: Place
   favIds: Set<string>
   userLocation: { lat: number; lng: number } | null
   onClick: (id: string) => void
+  score?: number
 }) {
   const dist        = userLocation
     ? haversine(userLocation.lat, userLocation.lng, place.lat, place.lng)
@@ -122,6 +125,19 @@ function PlaceRow({
                   {b.label}
                 </span>
               ))}
+              {score !== undefined && (() => {
+                const label = score > 0 ? `추천 +${score}` : score < 0 ? `추천 ${score}` : '추천 0'
+                const color = score > 0 ? '#16a34a' : score < 0 ? '#ef4444' : '#9ca3af'
+                const bg    = score > 0 ? '#f0fdf4' : score < 0 ? '#fef2f2' : '#f9fafb'
+                return (
+                  <span
+                    className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ml-auto"
+                    style={{ color, backgroundColor: bg }}
+                  >
+                    {label}
+                  </span>
+                )
+              })()}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {dist !== null && (
@@ -175,6 +191,12 @@ export default function ListPage() {
   // 위치
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
 
+  // 정렬: default / distance / recommended
+  const [sortMode,             setSortMode]             = useState<'default' | 'distance' | 'recommended'>('default')
+  const [recommendedOrder,     setRecommendedOrder]     = useState<string[]>([])
+  const [recommendedScores,    setRecommendedScores]    = useState<Map<string, number>>(new Map())
+  const [isLoadingRecommended, setIsLoadingRecommended] = useState(false)
+
   // ─── 데이터 로드 ──────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/places')
@@ -198,11 +220,29 @@ export default function ListPage() {
   // ─── 위치 요청 ────────────────────────────────────────────────────────
   const requestLocation = useCallback(() => {
     if (!navigator.geolocation) return
+    setSortMode('distance')
     navigator.geolocation.getCurrentPosition(
       (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => {},
     )
   }, [])
+
+  // ─── 추천순 정렬 ──────────────────────────────────────────────────────
+  const handleRecommendedSort = useCallback(async () => {
+    if (sortMode === 'recommended') { setSortMode('default'); return }
+    setSortMode('recommended')
+    if (recommendedOrder.length > 0) return
+    setIsLoadingRecommended(true)
+    try {
+      const res = await fetch('/api/places?sort=recommended')
+      if (res.ok) {
+        const data: Place[] = await res.json()
+        setRecommendedOrder(data.map((p) => p.id))
+        setRecommendedScores(new Map(data.map((p) => [p.id, p.recommendation_score ?? 0])))
+      }
+    } catch { /* 무시 */ }
+    finally { setIsLoadingRecommended(false) }
+  }, [sortMode, recommendedOrder.length])
 
   // ─── 태그 목록 (선택 타입 기준) ───────────────────────────────────────
   const uniqueGeneralTags = useMemo(() => {
@@ -244,14 +284,24 @@ export default function ListPage() {
     return result
   }, [places, filterState, selectedTagFilters])
 
-  // 거리순 정렬된 기본 목록
+  // 정렬 적용 목록 (default / distance / recommended)
   const sortedPlaces = useMemo(() => {
-    if (!userLocation) return filteredPlaces
-    return [...filteredPlaces].sort((a, b) =>
-      haversine(userLocation.lat, userLocation.lng, a.lat, a.lng) -
-      haversine(userLocation.lat, userLocation.lng, b.lat, b.lng),
-    )
-  }, [filteredPlaces, userLocation])
+    if (sortMode === 'recommended' && recommendedOrder.length > 0) {
+      const orderMap = new Map(recommendedOrder.map((id, i) => [id, i]))
+      return [...filteredPlaces].sort((a, b) => {
+        const ai = orderMap.get(a.id) ?? filteredPlaces.length
+        const bi = orderMap.get(b.id) ?? filteredPlaces.length
+        return ai - bi
+      })
+    }
+    if (sortMode === 'distance' && userLocation) {
+      return [...filteredPlaces].sort((a, b) =>
+        haversine(userLocation.lat, userLocation.lng, a.lat, a.lng) -
+        haversine(userLocation.lat, userLocation.lng, b.lat, b.lng),
+      )
+    }
+    return filteredPlaces
+  }, [filteredPlaces, sortMode, userLocation, recommendedOrder])
 
   // 종류별 그룹화
   const groupedByType = useMemo(() => {
@@ -351,11 +401,27 @@ export default function ListPage() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-base font-bold text-gray-900">장소 목록</h1>
           <div className="flex items-center gap-2">
+            {/* 추천순 버튼 */}
+            <button
+              onClick={handleRecommendedSort}
+              className={`text-[11px] font-semibold flex items-center gap-0.5 transition-colors ${
+                sortMode === 'recommended' ? 'text-[#BF3A21]' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {isLoadingRecommended ? (
+                <span>로딩중...</span>
+              ) : (
+                <>
+                  <span className="text-[10px] leading-none">⭐</span>
+                  추천순
+                </>
+              )}
+            </button>
             {/* 거리순 버튼 */}
             <button
               onClick={requestLocation}
               className={`text-[11px] font-semibold flex items-center gap-0.5 ${
-                userLocation ? 'text-emerald-500' : 'text-gray-400 hover:text-gray-600'
+                sortMode === 'distance' && userLocation ? 'text-emerald-500' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24"
@@ -363,7 +429,7 @@ export default function ListPage() {
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
               </svg>
-              {userLocation ? '거리순' : '거리순 정렬'}
+              {sortMode === 'distance' && userLocation ? '거리순' : '거리순 정렬'}
             </button>
             {/* 필터 버튼 */}
             <button
@@ -477,6 +543,7 @@ export default function ListPage() {
                 favIds={favIds}
                 userLocation={userLocation}
                 onClick={openOnMap}
+                score={sortMode === 'recommended' ? (recommendedScores.get(place.id) ?? 0) : undefined}
               />
             ))}
           </ul>

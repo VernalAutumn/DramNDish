@@ -167,8 +167,12 @@ export async function POST(req: NextRequest) {
 }
 
 // GET: 전체 장소 목록 반환
-export async function GET() {
+// ?sort=recommended → 재방문 의사(visit_again - no_visit) 점수 내림차순 정렬
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url)
+    const sort = searchParams.get('sort')
+
     const { data, error } = await supabase
       .from('places')
       .select('*, tags(id, type, label, count)')
@@ -178,7 +182,29 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    const places = data ?? []
+
+    // ── 추천순: 재방문 의사 점수(visit_again - no_visit) 기준 정렬 ───────────
+    if (sort === 'recommended') {
+      const { data: reactions } = await supabase
+        .from('place_reactions')
+        .select('place_id, reaction_type')
+
+      // place_id → 점수 맵 (없으면 0)
+      const scoreMap = new Map<string, number>()
+      for (const r of reactions ?? []) {
+        const prev = scoreMap.get(r.place_id) ?? 0
+        scoreMap.set(r.place_id, prev + (r.reaction_type === 'visit_again' ? 1 : -1))
+      }
+
+      const sorted = [...places]
+        .map((p) => ({ ...p, recommendation_score: scoreMap.get(p.id) ?? 0 }))
+        .sort((a, b) => b.recommendation_score - a.recommendation_score)
+
+      return NextResponse.json(sorted)
+    }
+
+    return NextResponse.json(places)
   } catch {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
