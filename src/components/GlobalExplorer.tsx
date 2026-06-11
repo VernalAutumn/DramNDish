@@ -1,0 +1,354 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import GlobalPlaceDetail from './GlobalPlaceDetail'
+import { GlobalPlace, GLOBAL_TYPE_LABEL, countryLabel } from '@/src/lib/global'
+
+// dramndish Global(해외) 탐색 화면 — §8.1 구조 (국내 NaverMap 방식 참고).
+// 전체 배경 = 지도(골격), 좌측 플로팅 리스트, 선택 시 리스트 우측에 상세 패널.
+// 지도는 부록 C대로 API 키 연동 전 골격만 — 키가 없으면 명시적 안내 (§9).
+// TODO(다음 슬라이스): Google Maps JS API 마커·fitBounds·유효 중심 panTo (§8.1)
+
+const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+type Status = 'loading' | 'ready' | 'empty' | 'not_ready' | 'error'
+
+const TYPE_FILTERS = [
+  { key: 'all', label: '전체' },
+  { key: 'liquor_shop', label: '리쿼샵' },
+  { key: 'bar', label: '바' },
+  { key: 'restaurant', label: '음식점' },
+  { key: 'distillery', label: '증류소' },
+] as const
+
+// 카드에 노출할 유형별 핵심 속성 뱃지 (§8.1) — 값이 있을 때만 (§6)
+function attrBadges(p: GlobalPlace): string[] {
+  const a = p.attributes ?? {}
+  const badges: string[] = []
+  if (a.has_tasting === true) badges.push('시음')
+  if (a.has_handfill === true || a.handfill === true) badges.push('핸드필')
+  if (a.tax_free === true) badges.push('면세')
+  if (a.booking_required === true) badges.push('예약 필수')
+  if (a.smoking === false) badges.push('금연')
+  return badges
+}
+
+export default function GlobalExplorer() {
+  const router = useRouter()
+  const [status, setStatus] = useState<Status>('loading')
+  const [places, setPlaces] = useState<GlobalPlace[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // 필터·검색·정렬 (§8.1 상단 바) — 데이터가 작아 클라이언트에서 처리
+  const [country, setCountry] = useState('all')
+  const [type, setType] = useState('all')
+  const [q, setQ] = useState('')
+
+  const load = useCallback(async () => {
+    setStatus('loading')
+    try {
+      const res = await fetch('/api/global/places')
+      if (res.status === 503) {
+        setStatus('not_ready')
+        return
+      }
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      const list: GlobalPlace[] = json.places ?? []
+      setPlaces(list)
+      setStatus(list.length === 0 ? 'empty' : 'ready')
+    } catch {
+      setStatus('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const countries = useMemo(
+    () => Array.from(new Set(places.map((p) => p.country))).sort(),
+    [places]
+  )
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return places.filter((p) => {
+      if (country !== 'all' && p.country !== country) return false
+      if (type !== 'all' && p.type !== type) return false
+      if (
+        needle &&
+        ![p.name, p.name_local, p.region, p.address]
+          .filter(Boolean)
+          .some((s) => (s as string).toLowerCase().includes(needle))
+      )
+        return false
+      return true
+    })
+  }, [places, country, type, q])
+
+  const selected = selectedId != null
+
+  return (
+    <div className="relative h-[100dvh] overflow-hidden bg-surface-tertiary">
+      {/* ── 지도 영역 (전체 배경) — 골격 ─────────────────────────────────── */}
+      <div className="absolute inset-0 z-0 flex items-center justify-center">
+        <div className="text-center px-6">
+          <p className="text-sm font-medium text-gray-500">
+            {MAPS_KEY
+              ? '지도 연동 준비중 — 다음 업데이트에서 표시됩니다.'
+              : '지도 준비중 — Google Maps API 키 연동 전입니다.'}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">장소는 좌측 목록에서 확인할 수 있습니다.</p>
+        </div>
+      </div>
+
+      {/* ── 📱 모바일 국내/해외 탑 앱바 ─────────────────────────────────── */}
+      <div
+        className="md:hidden fixed top-0 left-0 right-0 z-30 flex bg-white border-b border-gray-100"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        <button
+          onClick={() => router.push('/')}
+          className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 border-transparent"
+          style={{ opacity: 0.85, color: '#374151' }}
+        >
+          국내
+        </button>
+        <button
+          className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-bold border-b-2"
+          style={{ color: 'var(--color-brand-primary)', borderColor: 'var(--color-brand-primary)' }}
+        >
+          해외
+          <span
+            className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+            style={{ background: '#e5e7eb', color: '#6b7280' }}
+          >
+            베타
+          </span>
+        </button>
+      </div>
+
+      {/* ── 💻 데스크탑 국내/해외 플로팅 알약 ───────────────────────────── */}
+      <div
+        className="hidden md:flex fixed top-4 left-1/2 -translate-x-1/2 z-50 items-center gap-0.5 rounded-full p-1 shadow-xl"
+        style={{ background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(8px)' }}
+      >
+        <button
+          onClick={() => router.push('/')}
+          className="px-5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5"
+          style={{ opacity: 0.85, color: '#374151' }}
+        >
+          국내
+        </button>
+        <button
+          className="px-5 py-1.5 rounded-full text-sm font-bold shadow-sm flex items-center gap-1.5"
+          style={{ background: 'rgba(191,58,33,0.09)', color: 'var(--color-brand-primary)' }}
+        >
+          해외
+          <span
+            className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+            style={{ background: '#e5e7eb', color: '#6b7280' }}
+          >
+            베타
+          </span>
+        </button>
+      </div>
+
+      {/* ── 좌측 플로팅 리스트 패널 (§8.1) ─────────────────────────────── */}
+      <div
+        className={[
+          'absolute z-20 flex flex-col',
+          // 모바일: 앱바 아래 풀폭 / 데스크탑: 좌측 플로팅
+          'inset-x-0 top-[calc(env(safe-area-inset-top)+48px)] bottom-0',
+          'md:inset-auto md:top-4 md:bottom-4 md:left-4 md:w-[360px]',
+        ].join(' ')}
+      >
+        <div className="panel w-full h-full flex flex-col overflow-hidden md:rounded-2xl bg-white">
+          {/* 상단 바: 국가 선택 · 검색 · 필터 */}
+          <div className="px-4 pt-3 pb-2 border-b border-border-default flex-shrink-0 space-y-2">
+            <div className="flex gap-2">
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
+              >
+                <option value="all">모든 국가</option>
+                {countries.map((c) => (
+                  <option key={c} value={c}>
+                    {countryLabel(c)}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="이름·지역·주소 검색"
+                className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+              />
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {TYPE_FILTERS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setType(key)}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-full border"
+                  style={
+                    type === key
+                      ? {
+                          background: 'rgba(191,58,33,0.09)',
+                          borderColor: 'var(--color-brand-primary)',
+                          color: 'var(--color-brand-primary)',
+                        }
+                      : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 목록 본문 — §9 상태별 명시 렌더 */}
+          <div className="flex-1 overflow-y-auto">
+            {status === 'loading' && (
+              <p className="text-sm text-gray-500 py-12 text-center">불러오는 중…</p>
+            )}
+
+            {status === 'not_ready' && (
+              <div className="py-12 px-5 text-center">
+                <p className="text-sm font-medium text-gray-800">
+                  해외 데이터베이스가 아직 적용되지 않았습니다.
+                </p>
+                <button
+                  onClick={load}
+                  className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700"
+                >
+                  다시 확인
+                </button>
+              </div>
+            )}
+
+            {status === 'error' && (
+              <div className="py-12 px-5 text-center">
+                <p className="text-sm font-medium text-gray-800">일시 오류가 발생했습니다.</p>
+                <button
+                  onClick={load}
+                  className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700"
+                >
+                  재시도
+                </button>
+              </div>
+            )}
+
+            {status === 'empty' && (
+              <p className="text-sm text-gray-500 py-12 px-5 text-center">
+                등록된 해외 장소가 아직 없습니다.
+              </p>
+            )}
+
+            {status === 'ready' && (
+              <>
+                <p className="text-xs text-gray-400 px-4 pt-2">
+                  {filtered.length}개 장소
+                  {filtered.length !== places.length && ` / 전체 ${places.length}`}
+                </p>
+                {filtered.length === 0 ? (
+                  /* 검색/필터 0건 (§9) */
+                  <div className="py-10 px-5 text-center">
+                    <p className="text-sm text-gray-500">조건에 맞는 결과가 없습니다.</p>
+                    <button
+                      onClick={() => {
+                        setCountry('all')
+                        setType('all')
+                        setQ('')
+                      }}
+                      className="mt-3 text-xs font-medium underline"
+                      style={{ color: 'var(--color-brand-primary)' }}
+                    >
+                      필터 초기화
+                    </button>
+                  </div>
+                ) : (
+                  <ul className="px-3 py-2 space-y-2">
+                    {filtered.map((p) => {
+                      const active = p.id === selectedId
+                      return (
+                        <li key={p.id}>
+                          <button
+                            onClick={() => setSelectedId(active ? null : p.id)}
+                            className="w-full text-left border rounded-xl px-3.5 py-3 transition-colors"
+                            style={
+                              active
+                                ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.04)' }
+                                : { borderColor: 'var(--color-border-default)', background: '#fff' }
+                            }
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-gray-900">{p.name}</span>
+                              <span
+                                className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                                style={{ background: '#f3f4f6', color: '#4b5563' }}
+                              >
+                                {GLOBAL_TYPE_LABEL[p.type] ?? p.type}
+                                {p.subkind === 'ib_shop' && ' · IB 직영점'}
+                              </span>
+                            </div>
+                            {p.name_local && (
+                              <p className="text-[11px] text-gray-400 mt-0.5">{p.name_local}</p>
+                            )}
+                            <p className="text-xs text-gray-600 mt-1">
+                              {countryLabel(p.country)}
+                              {p.region ? ` · ${p.region}` : ''}
+                            </p>
+                            {attrBadges(p).length > 0 && (
+                              <div className="flex gap-1 mt-1.5 flex-wrap">
+                                {attrBadges(p).map((b) => (
+                                  <span
+                                    key={b}
+                                    className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                    style={{ background: '#eef2ff', color: '#4338ca' }}
+                                  >
+                                    {b}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <p className="text-[11px] text-gray-400 mt-1.5">
+                              {p.source === 'seed'
+                                ? '운영진 시드'
+                                : `등록: ${p.contributor?.nickname ?? '익명'}`}
+                            </p>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 상세 패널 — 리스트 우측에 이어서 열림 (§8.1) ─────────────────── */}
+      {selected && (
+        <>
+          {/* 데스크탑: list | detail */}
+          <div className="hidden md:flex absolute z-20 top-4 bottom-4 left-[calc(1rem+360px+0.75rem)] w-[400px]">
+            <div className="panel w-full h-full overflow-hidden md:rounded-2xl bg-white">
+              <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
+            </div>
+          </div>
+          {/* 모바일: 풀스크린 오버레이 */}
+          <div
+            className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white"
+          >
+            <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
