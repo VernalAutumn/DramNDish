@@ -51,6 +51,29 @@ interface Tag {
 
 const FOOD_CATEGORIES = ['한식', '일식', '중식', '양식', '아시안', '기타'] as const
 
+// ─── 해외 (dramndish Global) 미리보기 ──────────────────────────────────────
+interface OverseasPlace {
+  id: string
+  name: string
+  name_local: string | null
+  type: string
+  subkind: string | null
+  country: string
+  region: string | null
+  address: string | null
+  google_maps_url: string | null
+  official_url: string | null
+}
+
+const OVERSEAS_TYPE_LABEL: Record<string, string> = {
+  liquor_shop: '리쿼샵',
+  bar: '바',
+  restaurant: '음식점',
+  distillery: '증류소',
+}
+
+type OverseasStatus = 'loading' | 'ready' | 'empty' | 'not_ready' | 'error'
+
 interface PlacePhoto {
   id: string
   url: string
@@ -290,7 +313,9 @@ export default function NaverMap() {
   const [placeReportReason,    setPlaceReportReason]    = useState('')
   const [isSubmittingPlaceRep, setIsSubmittingPlaceRep] = useState(false)
   const [placeReportDone,      setPlaceReportDone]      = useState(false)
-  const [overseasToast, setOverseasToast] = useState(false)
+  const [overseasOpen,   setOverseasOpen]   = useState(false)
+  const [overseasStatus, setOverseasStatus] = useState<OverseasStatus>('loading')
+  const [overseasPlaces, setOverseasPlaces] = useState<OverseasPlace[]>([])
   const supabase     = useRef(createClient()).current
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -907,11 +932,30 @@ export default function NaverMap() {
     setTimeout(() => setLoginToast(false), 3500)
   }, [])
 
-  // ─── 해외 탭 클릭 (준비중 안내) ──────────────────────────────────────────
-  const handleOverseasClick = useCallback(() => {
-    setOverseasToast(true)
-    setTimeout(() => setOverseasToast(false), 4000)
+  // ─── 해외 탭 클릭 (dramndish Global 미리보기 패널) ──────────────────────
+  const loadOverseasPlaces = useCallback(async () => {
+    setOverseasStatus('loading')
+    try {
+      const res = await fetch('/api/global/places')
+      if (res.status === 503) {
+        // global 스키마 미적용/미노출 — 일시 오류와 구분 (§9 데이터 정직성)
+        setOverseasStatus('not_ready')
+        return
+      }
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      const places: OverseasPlace[] = json.places ?? []
+      setOverseasPlaces(places)
+      setOverseasStatus(places.length === 0 ? 'empty' : 'ready')
+    } catch {
+      setOverseasStatus('error')
+    }
   }, [])
+
+  const handleOverseasClick = useCallback(() => {
+    setOverseasOpen(true)
+    loadOverseasPlaces()
+  }, [loadOverseasPlaces])
 
   // ─── 리스트 아이템 즐겨찾기 빠른 토글 ──────────────────────────────────
   const handleFavoriteById = useCallback(async (placeId: string) => {
@@ -2082,15 +2126,120 @@ export default function NaverMap() {
         </div>
       )}
 
-      {/* ── 해외 준비중 토스트 ──────────────────────────────────────────── */}
-      {overseasToast && (
+      {/* ── 해외 (dramndish Global) 미리보기 패널 ───────────────────────── */}
+      {overseasOpen && (
         <div
-          className="fixed bottom-24 left-1/2 z-[200] flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl"
-          style={{ transform: 'translateX(-50%)', background: '#1C1412', color: '#fff' }}
+          className="fixed inset-0 z-[200] flex items-end md:items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setOverseasOpen(false)}
         >
-          <span className="text-sm font-medium flex-1">
-            해외는 곧 추가 예정입니다! ✈️
-          </span>
+          <div
+            className="bg-white w-full md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col"
+            style={{ maxHeight: '80vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-bold text-gray-900">해외</span>
+                <span
+                  className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: '#e5e7eb', color: '#6b7280' }}
+                >
+                  베타 준비중
+                </span>
+              </div>
+              <button
+                onClick={() => setOverseasOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1"
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* 본문 — §9 상태별 명시 렌더 */}
+            <div className="overflow-y-auto px-5 py-4">
+              {overseasStatus === 'loading' && (
+                <p className="text-sm text-gray-500 py-8 text-center">불러오는 중…</p>
+              )}
+
+              {overseasStatus === 'not_ready' && (
+                <div className="py-8 text-center">
+                  <p className="text-sm font-medium text-gray-800">
+                    해외 데이터베이스가 아직 적용되지 않았습니다.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Supabase에 global 스키마 마이그레이션을 실행하고
+                    Exposed schemas에 추가해야 합니다.
+                    (supabase/DRAMNDISH_README.md 참고)
+                  </p>
+                  <button
+                    onClick={loadOverseasPlaces}
+                    className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700"
+                  >
+                    다시 확인
+                  </button>
+                </div>
+              )}
+
+              {overseasStatus === 'error' && (
+                <div className="py-8 text-center">
+                  <p className="text-sm font-medium text-gray-800">일시 오류가 발생했습니다.</p>
+                  <button
+                    onClick={loadOverseasPlaces}
+                    className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700"
+                  >
+                    재시도
+                  </button>
+                </div>
+              )}
+
+              {overseasStatus === 'empty' && (
+                <p className="text-sm text-gray-500 py-8 text-center">
+                  등록된 해외 장소가 아직 없습니다.
+                </p>
+              )}
+
+              {overseasStatus === 'ready' && (
+                <ul className="flex flex-col gap-3">
+                  {overseasPlaces.map((p) => (
+                    <li key={p.id} className="border border-gray-200 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-gray-900">{p.name}</span>
+                        <span
+                          className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ background: '#f3f4f6', color: '#4b5563' }}
+                        >
+                          {OVERSEAS_TYPE_LABEL[p.type] ?? p.type}
+                          {p.subkind === 'ib_shop' && ' · IB 직영점'}
+                        </span>
+                      </div>
+                      {p.name_local && (
+                        <p className="text-xs text-gray-400 mt-0.5">{p.name_local}</p>
+                      )}
+                      <p className="text-xs text-gray-600 mt-1.5">
+                        {p.country}
+                        {p.region ? ` · ${p.region}` : ''}
+                        {p.address ? ` · ${p.address}` : ''}
+                      </p>
+                      {p.google_maps_url && (
+                        <a
+                          href={p.google_maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block text-xs font-medium mt-2 underline"
+                          style={{ color: MARKER_COLOR }}
+                        >
+                          구글 지도에서 보기
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -2107,12 +2256,11 @@ export default function NaverMap() {
           국내
         </button>
 
-        {/* 해외: 시각적 비활성 */}
+        {/* 해외: 베타 미리보기 (dramndish Global) */}
         <button
-          aria-disabled="true"
           onClick={handleOverseasClick}
           className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors"
-          style={{ opacity: 0.45, cursor: 'not-allowed', filter: 'grayscale(1)', color: '#374151' }}
+          style={{ opacity: 0.85, color: '#374151' }}
         >
           해외
           <span
@@ -2141,12 +2289,11 @@ export default function NaverMap() {
           국내
         </button>
 
-        {/* 해외: 시각적 비활성 */}
+        {/* 해외: 베타 미리보기 (dramndish Global) */}
         <button
-          aria-disabled="true"
           onClick={handleOverseasClick}
           className="px-5 py-1.5 rounded-full text-sm font-semibold transition-all flex items-center gap-1.5"
-          style={{ opacity: 0.45, cursor: 'not-allowed', filter: 'grayscale(1)', color: '#374151' }}
+          style={{ opacity: 0.85, color: '#374151' }}
         >
           해외
           <span
