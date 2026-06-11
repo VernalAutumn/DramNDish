@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 async function getSessionUserId(): Promise<string | null> {
@@ -43,6 +43,7 @@ async function geocode(address: string): Promise<{ lat: number; lng: number } | 
 export async function POST(req: NextRequest) {
   try {
     const [body, submittedBy] = await Promise.all([req.json(), getSessionUserId()])
+    const supabase = createSupabaseClient()
     const {
       name, address, type, naver_place_id, district, city,
       lat: bodyLat, lng: bodyLng,
@@ -172,6 +173,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const sort = searchParams.get('sort')
+    const supabase = createSupabaseClient()
 
     const { data, error } = await supabase
       .from('places')

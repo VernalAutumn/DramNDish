@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# npm 로컬 캐시 (에이전트 작업 잔여물)
+.npm-cache/
+
 # Claude Code — skills/session data 제외, ROADMAP.md는 추적
 .claude/*
 !.claude/ROADMAP.md

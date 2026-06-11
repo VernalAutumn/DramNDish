@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 
 // GET: 단일 장소 조회
 export async function GET(
@@ -7,6 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from('places')
     .select('*, tags(id, type, label, count)')
@@ -29,6 +30,7 @@ export async function PATCH(
 ) {
   const { id } = await params
   const body = await req.json()
+  const supabase = createSupabaseClient()
 
   const allowed = ['name', 'address', 'type', 'district', 'naver_place_id', 'corkage_type', 'corkage_fee', 'cover_charge']
   const payload: Record<string, unknown> = {}

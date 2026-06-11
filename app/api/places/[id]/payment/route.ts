@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 
 // PATCH body: { payment_methods: string[] }
 export async function PATCH(
@@ -8,6 +8,7 @@ export async function PATCH(
 ) {
   const { id } = await params
   const { payment_methods } = await req.json()
+  const supabase = createSupabaseClient()
 
   const { data, error } = await supabase
     .from('places')

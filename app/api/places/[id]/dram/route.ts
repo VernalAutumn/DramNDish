@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const supabase = createSupabaseClient()
 
   const { data, error } = await supabase
     .from('places')

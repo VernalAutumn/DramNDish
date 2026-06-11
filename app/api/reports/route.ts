@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase as anonClient } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 
 /**
  * POST /api/reports
@@ -11,6 +11,7 @@ import { supabase as anonClient } from '@/src/lib/supabase'
  * 로그인 유저는 SSR 쿠키에서 user_id를 자동으로 읽어 저장.
  */
 export async function POST(req: NextRequest) {
+  const anonClient = createSupabaseClient()
   const body = await req.json().catch(() => ({}))
 
   const reported_item_id: string = (body.reported_item_id ?? '').trim()

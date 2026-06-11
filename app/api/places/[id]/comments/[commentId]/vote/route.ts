@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 
 // POST: 코멘트 찬반 투표 (+1)
 export async function POST(
@@ -9,6 +9,7 @@ export async function POST(
   const { commentId } = await params
   const body = await req.json()
   const type: 'like' | 'dislike' = body.type
+  const supabase = createSupabaseClient()
 
   if (type !== 'like' && type !== 'dislike') {
     return NextResponse.json({ error: 'type은 like 또는 dislike여야 합니다.' }, { status: 400 })

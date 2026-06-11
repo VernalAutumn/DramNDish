@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 async function getSessionUserId(): Promise<string | null> {
@@ -26,6 +26,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const supabase = createSupabaseClient()
 
   const { data, error } = await supabase
     .from('tags')
@@ -48,6 +49,7 @@ export async function POST(
 ) {
   const { id } = await params
   const [body, userId] = await Promise.all([req.json(), getSessionUserId()])
+  const supabase = createSupabaseClient()
 
   const label: string            = (body.label ?? '').trim()
   const type: string             = body.type ?? 'general'

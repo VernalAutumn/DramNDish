@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase as anonClient } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 async function makeSSRClient() {
@@ -26,6 +26,7 @@ export async function DELETE(
   const { commentId } = await params
   const body = await req.json().catch(() => ({}))
   const code: string = (body.code ?? '').trim()
+  const anonClient = createSupabaseClient()
 
   // ── 레코드 조회 ─────────────────────────────────────────────────────────
   const { data: row, error: fetchErr } = await anonClient

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 // DELETE: 비밀번호 검증 후 태그 삭제
@@ -10,6 +10,7 @@ export async function DELETE(
   const { tagId } = await params
   const body = await req.json()
   const code: string = (body.code ?? '').trim()
+  const supabase = createSupabaseClient()
 
   if (!code) return NextResponse.json({ error: 'code는 필수입니다.' }, { status: 400 })
 

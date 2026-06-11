@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 
 // POST body: { action: 'like' | 'unlike' }
 export async function POST(
@@ -8,6 +8,7 @@ export async function POST(
 ) {
   const { id } = await params
   const { action } = await req.json()
+  const supabase = createSupabaseClient()
 
   const { data, error } = await supabase
     .from('places')

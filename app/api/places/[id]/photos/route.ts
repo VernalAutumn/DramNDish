@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase as anonClient } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 // ── SSR 클라이언트 (쿠키 기반 auth) ──────────────────────────────────────────
@@ -25,6 +25,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const anonClient = createSupabaseClient()
 
   const { data, error } = await anonClient
     .from('place_photos')
@@ -45,6 +46,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const anonClient = createSupabaseClient()
 
   try {
     const formData = await req.formData()

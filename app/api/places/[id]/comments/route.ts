@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase as anonClient } from '@/src/lib/supabase'
+import { createSupabaseClient } from '@/src/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 async function makeSSRClient() {
@@ -24,6 +24,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const anonClient = createSupabaseClient()
 
   const { data, error } = await anonClient
     .from('comments')
@@ -45,6 +46,7 @@ export async function POST(
 ) {
   const { id } = await params
   const body = await req.json()
+  const anonClient = createSupabaseClient()
 
   if (!(body.content ?? '').trim()) {
     return NextResponse.json({ error: '내용을 입력해주세요.' }, { status: 400 })
