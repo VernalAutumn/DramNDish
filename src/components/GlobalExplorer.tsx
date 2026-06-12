@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import GlobalPlaceDetail from './GlobalPlaceDetail'
 import { GlobalPlace, GLOBAL_TYPE_LABEL, countryLabel } from '@/src/lib/global'
 
@@ -91,9 +91,16 @@ function attrBadges(p: GlobalPlace): string[] {
 
 export default function GlobalExplorer() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [status, setStatus] = useState<Status>('loading')
   const [places, setPlaces] = useState<GlobalPlace[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // /global?place={id} — 등록 직후·공유 링크로 상세 바로 열기
+  useEffect(() => {
+    const pid = searchParams.get('place')
+    if (pid) setSelectedId(pid)
+  }, [searchParams])
 
   // 필터·검색·정렬 (§8.1 상단 바) — 데이터가 작아 클라이언트에서 처리
   const [country, setCountry] = useState('all')
@@ -444,6 +451,23 @@ export default function GlobalExplorer() {
             )}
             </>
             )}
+          </div>
+
+          {/* 패널 푸터: 장소 등록(§8.6) · 내 기록(§8.5) */}
+          <div className="flex border-t border-border-default flex-shrink-0 bg-white">
+            <button
+              onClick={() => router.push('/global/add')}
+              className="flex-1 py-2.5 text-xs font-bold"
+              style={{ color: 'var(--color-brand-primary)' }}
+            >
+              + 장소 등록
+            </button>
+            <button
+              onClick={() => router.push('/global/me')}
+              className="flex-1 py-2.5 text-xs font-semibold text-gray-600 border-l border-border-default"
+            >
+              내 기록
+            </button>
           </div>
         </div>
       </div>
