@@ -79,8 +79,8 @@ function obsOptionsFor(
     opts.push({ key: 'cask_level', label: '핸드필 캐스크 잔량', bucket: true })
   }
   // 보틀 잔량(bottle_level)은 입력받지 않는다 (2026-06-13 운영 결정 — 기존 데이터 표시는 유지).
-  // 가격·재고는 보틀에 관한 한 가지 정보라 하나로 합쳐 받는다 → obs_type='price'로 저장.
-  opts.push({ key: 'price', label: '가격·재고', bucket: false })
+  // 가격·재고는 "재고" 하나로 통합 — 제품명/가격/수량 3필드 입력 (obs_type='stock'으로 저장).
+  opts.push({ key: 'stock', label: '재고', bucket: false })
   if (type === 'distillery') {
     opts.push({ key: 'tour_info', label: '투어 정보', bucket: false })
   }
@@ -869,20 +869,41 @@ function ObservationForm({
   onDone: () => void
 }) {
   const options = obsOptionsFor(placeType, placeAttrs)
-  const [obsType, setObsType] = useState(options[0]?.key ?? 'price')
+  const [obsType, setObsType] = useState(options[0]?.key ?? 'stock')
   const [bucket, setBucket] = useState('half')
   const [valueText, setValueText] = useState('')
+  // 재고(stock) 전용 3필드: 제품명 / 가격 / 수량
+  const [productName, setProductName] = useState('')
+  const [priceText, setPriceText] = useState('')
+  const [qtyText, setQtyText] = useState('')
   const [note, setNote] = useState('')
   const [observedAt, setObservedAt] = useState(() => new Date().toISOString().slice(0, 10))
 
   const current = options.find((o) => o.key === obsType)
   const isBucket = current?.bucket ?? false
+  const isStock = !isBucket && obsType === 'stock'
 
   const submit = async () => {
     if (busy) return
-    if (!isBucket && !valueText.trim()) {
-      alert('관찰 값을 입력해주세요.')
-      return
+    let composedValue: string | null = null
+    if (isStock) {
+      if (!productName.trim()) {
+        alert('제품 명을 입력해주세요.')
+        return
+      }
+      if (!priceText.trim() && !qtyText.trim()) {
+        alert('가격 또는 수량을 입력해주세요.')
+        return
+      }
+      composedValue = [productName.trim(), priceText.trim(), qtyText.trim()]
+        .filter(Boolean)
+        .join(' · ')
+    } else if (!isBucket) {
+      if (!valueText.trim()) {
+        alert('관찰 값을 입력해주세요.')
+        return
+      }
+      composedValue = valueText.trim()
     }
     setBusy(true)
     try {
@@ -892,7 +913,7 @@ function ObservationForm({
         body: JSON.stringify({
           obs_type: obsType,
           value_bucket: isBucket ? bucket : null,
-          value_text: isBucket ? null : valueText.trim(),
+          value_text: composedValue,
           note: note.trim() || null,
           observed_at: observedAt,
         }),
@@ -953,11 +974,32 @@ function ObservationForm({
             </button>
           ))}
         </div>
+      ) : isStock ? (
+        <div className="space-y-1.5">
+          <input
+            value={productName}
+            onChange={(e) => setProductName(e.target.value)}
+            placeholder="제품 명 (예: 야마자키 12년)"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+          />
+          <input
+            value={priceText}
+            onChange={(e) => setPriceText(e.target.value)}
+            placeholder="가격 (예: 12,000엔)"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+          />
+          <input
+            value={qtyText}
+            onChange={(e) => setQtyText(e.target.value)}
+            placeholder="수량 (확인 가능한 정도, 또는 직원 카더라)"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+          />
+        </div>
       ) : (
         <input
           value={valueText}
           onChange={(e) => setValueText(e.target.value)}
-          placeholder={obsType === 'price' ? '예: 야마자키 12년 12,000엔 · 재고 있음' : '관찰 내용'}
+          placeholder="관찰 내용"
           className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
         />
       )}

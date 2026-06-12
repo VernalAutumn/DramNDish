@@ -22,6 +22,61 @@ const TYPE_FILTERS = [
   { key: 'distillery', label: '증류소' },
 ] as const
 
+// 장소 카드 — 목록·즐겨찾기 탭 공용
+function PlaceCard({
+  p,
+  active,
+  onClick,
+}: {
+  p: GlobalPlace
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left border rounded-xl px-3.5 py-3 transition-colors"
+      style={
+        active
+          ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.04)' }
+          : { borderColor: 'var(--color-border-default)', background: '#fff' }
+      }
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-bold text-gray-900">{p.name}</span>
+        <span
+          className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+          style={{ background: '#f3f4f6', color: '#4b5563' }}
+        >
+          {GLOBAL_TYPE_LABEL[p.type] ?? p.type}
+          {p.subkind === 'ib_shop' && ' · IB 직영점'}
+        </span>
+      </div>
+      {p.name_local && <p className="text-[11px] text-gray-400 mt-0.5">{p.name_local}</p>}
+      <p className="text-xs text-gray-600 mt-1">
+        {countryLabel(p.country)}
+        {p.region ? ` · ${p.region}` : ''}
+      </p>
+      {attrBadges(p).length > 0 && (
+        <div className="flex gap-1 mt-1.5 flex-wrap">
+          {attrBadges(p).map((b) => (
+            <span
+              key={b}
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+              style={{ background: '#eef2ff', color: '#4338ca' }}
+            >
+              {b}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-gray-400 mt-1.5">
+        {p.source === 'seed' ? '운영진 시드' : `등록: ${p.contributor?.nickname ?? '익명'}`}
+      </p>
+    </button>
+  )
+}
+
 // 카드에 노출할 유형별 핵심 속성 뱃지 (§8.1) — 값이 있을 때만 (§6)
 function attrBadges(p: GlobalPlace): string[] {
   const a = p.attributes ?? {}
@@ -45,6 +100,11 @@ export default function GlobalExplorer() {
   const [type, setType] = useState('all')
   const [q, setQ] = useState('')
 
+  // 목록 / 즐겨찾기 탭 (국내판 패턴). 본격 모아보기는 마이페이지(§8.5)에서.
+  const [mainTab, setMainTab] = useState<'list' | 'favorites'>('list')
+  const [favIds, setFavIds] = useState<string[]>([])
+  const [favState, setFavState] = useState<'loading' | 'ready' | 'unauth' | 'error'>('loading')
+
   const load = useCallback(async () => {
     setStatus('loading')
     try {
@@ -67,6 +127,33 @@ export default function GlobalExplorer() {
     load()
   }, [load])
 
+  // 즐겨찾기 탭 진입 시마다 새로 조회 (상세 패널에서 토글한 변경 반영)
+  useEffect(() => {
+    if (mainTab !== 'favorites') return
+    let alive = true
+    setFavState('loading')
+    fetch('/api/global/favorites')
+      .then((r) => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then((j) => {
+        if (!alive) return
+        if (!j.authenticated) {
+          setFavState('unauth')
+          return
+        }
+        setFavIds(j.placeIds ?? [])
+        setFavState('ready')
+      })
+      .catch(() => {
+        if (alive) setFavState('error')
+      })
+    return () => {
+      alive = false
+    }
+  }, [mainTab])
+
   const countries = useMemo(
     () => Array.from(new Set(places.map((p) => p.country))).sort(),
     [places]
@@ -87,6 +174,12 @@ export default function GlobalExplorer() {
       return true
     })
   }, [places, country, type, q])
+
+  // 즐겨찾기 탭: 추가순 정렬 유지 (필터 미적용 — 내가 찜한 건 전부 보이게)
+  const favoritePlaces = useMemo(() => {
+    const byId = new Map(places.map((p) => [p.id, p]))
+    return favIds.map((id) => byId.get(id)).filter(Boolean) as GlobalPlace[]
+  }, [favIds, places])
 
   const selected = selectedId != null
 
@@ -166,7 +259,31 @@ export default function GlobalExplorer() {
         ].join(' ')}
       >
         <div className="panel w-full h-full flex flex-col overflow-hidden md:rounded-2xl bg-white">
-          {/* 상단 바: 국가 선택 · 검색 · 필터 */}
+          {/* 목록 / 즐겨찾기 탭 (국내판 패턴) */}
+          <div className="flex border-b border-border-default flex-shrink-0">
+            {(
+              [
+                { key: 'list', label: '목록' },
+                { key: 'favorites', label: '즐겨찾기' },
+              ] as const
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setMainTab(key)}
+                className="flex-1 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors"
+                style={
+                  mainTab === key
+                    ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }
+                    : { borderColor: 'transparent', color: '#9ca3af' }
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* 상단 바: 국가 선택 · 검색 · 필터 (목록 탭 전용) */}
+          {mainTab === 'list' && (
           <div className="px-4 pt-3 pb-2 border-b border-border-default flex-shrink-0 space-y-2">
             <div className="flex gap-2">
               <select
@@ -209,9 +326,49 @@ export default function GlobalExplorer() {
               ))}
             </div>
           </div>
+          )}
 
           {/* 목록 본문 — §9 상태별 명시 렌더 */}
           <div className="flex-1 overflow-y-auto">
+            {/* 즐겨찾기 탭 */}
+            {mainTab === 'favorites' && (
+              <>
+                {favState === 'loading' && (
+                  <p className="text-sm text-gray-500 py-12 text-center">불러오는 중…</p>
+                )}
+                {favState === 'unauth' && (
+                  <p className="text-sm text-gray-500 py-12 px-5 text-center">
+                    로그인하면 즐겨찾기한 장소를 모아볼 수 있습니다.
+                  </p>
+                )}
+                {favState === 'error' && (
+                  <p className="text-sm text-gray-500 py-12 px-5 text-center">
+                    즐겨찾기를 불러오지 못했습니다.
+                  </p>
+                )}
+                {favState === 'ready' &&
+                  (favoritePlaces.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-12 px-5 text-center">
+                      즐겨찾기한 장소가 아직 없습니다. 장소 상세에서 ☆을 눌러 추가하세요.
+                    </p>
+                  ) : (
+                    <ul className="px-3 py-2 space-y-2">
+                      {favoritePlaces.map((p) => (
+                        <li key={p.id}>
+                          <PlaceCard
+                            p={p}
+                            active={p.id === selectedId}
+                            onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ))}
+              </>
+            )}
+
+            {mainTab === 'list' && (
+            <>
             {status === 'loading' && (
               <p className="text-sm text-gray-500 py-12 text-center">불러오는 중…</p>
             )}
@@ -272,61 +429,20 @@ export default function GlobalExplorer() {
                   </div>
                 ) : (
                   <ul className="px-3 py-2 space-y-2">
-                    {filtered.map((p) => {
-                      const active = p.id === selectedId
-                      return (
-                        <li key={p.id}>
-                          <button
-                            onClick={() => setSelectedId(active ? null : p.id)}
-                            className="w-full text-left border rounded-xl px-3.5 py-3 transition-colors"
-                            style={
-                              active
-                                ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.04)' }
-                                : { borderColor: 'var(--color-border-default)', background: '#fff' }
-                            }
-                          >
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-gray-900">{p.name}</span>
-                              <span
-                                className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                                style={{ background: '#f3f4f6', color: '#4b5563' }}
-                              >
-                                {GLOBAL_TYPE_LABEL[p.type] ?? p.type}
-                                {p.subkind === 'ib_shop' && ' · IB 직영점'}
-                              </span>
-                            </div>
-                            {p.name_local && (
-                              <p className="text-[11px] text-gray-400 mt-0.5">{p.name_local}</p>
-                            )}
-                            <p className="text-xs text-gray-600 mt-1">
-                              {countryLabel(p.country)}
-                              {p.region ? ` · ${p.region}` : ''}
-                            </p>
-                            {attrBadges(p).length > 0 && (
-                              <div className="flex gap-1 mt-1.5 flex-wrap">
-                                {attrBadges(p).map((b) => (
-                                  <span
-                                    key={b}
-                                    className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                                    style={{ background: '#eef2ff', color: '#4338ca' }}
-                                  >
-                                    {b}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            <p className="text-[11px] text-gray-400 mt-1.5">
-                              {p.source === 'seed'
-                                ? '운영진 시드'
-                                : `등록: ${p.contributor?.nickname ?? '익명'}`}
-                            </p>
-                          </button>
-                        </li>
-                      )
-                    })}
+                    {filtered.map((p) => (
+                      <li key={p.id}>
+                        <PlaceCard
+                          p={p}
+                          active={p.id === selectedId}
+                          onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                        />
+                      </li>
+                    ))}
                   </ul>
                 )}
               </>
+            )}
+            </>
             )}
           </div>
         </div>
