@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import type { User } from '@supabase/supabase-js'
+import { createClient } from '@/src/lib/supabase-browser'
 import {
   GlobalPlace,
   GlobalReview,
@@ -15,9 +17,9 @@ import {
   freshnessColor,
 } from '@/src/lib/global'
 
-// 해외 장소 상세 패널 — §8.2 표시 순서를 따른다.
-// 작성 기능(후기·관찰·즐겨찾기·신고)은 다음 슬라이스 — 미구현은 '준비중'으로
-// 명시하고 클릭 가능한 척하지 않는다 (§1 데이터 정직성).
+// 해외 장소 상세 패널 — §8.2 표시 순서.
+// 작성 기능: 즐겨찾기 / 신고 / 관찰 입력 (로그인 필수, §9).
+// 후기 작성 폼은 사진 업로드(Storage) 슬라이스와 함께 — 다음 단계.
 
 interface DetailData {
   place: GlobalPlace
@@ -31,7 +33,6 @@ interface DetailData {
 
 type Status = 'loading' | 'ready' | 'error'
 
-// 값 없음(undefined)과 false를 구분해 표기 — §6 "없는 값은 키를 넣지 않는다"
 function fmtBool(v: unknown, yes: string, no: string): string {
   if (v === true) return yes
   if (v === false) return no
@@ -50,8 +51,30 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-[13px] font-bold text-gray-900 mt-5 mb-1.5">{children}</h3>
+function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between mt-5 mb-1.5">
+      <h3 className="text-[13px] font-bold text-gray-900">{children}</h3>
+      {right}
+    </div>
+  )
+}
+
+// 장소 유형별 관찰 입력에서 고를 수 있는 obs_type
+function obsOptionsFor(type: string): { key: string; label: string; bucket: boolean }[] {
+  const opts: { key: string; label: string; bucket: boolean }[] = []
+  if (type === 'liquor_shop' || type === 'distillery') {
+    opts.push({ key: 'cask_level', label: '핸드필 캐스크 잔량', bucket: true })
+  }
+  if (type === 'bar') {
+    opts.push({ key: 'bottle_level', label: '보틀 잔량', bucket: true })
+  }
+  opts.push({ key: 'price', label: '가격', bucket: false })
+  opts.push({ key: 'stock', label: '재고', bucket: false })
+  if (type === 'distillery') {
+    opts.push({ key: 'tour_info', label: '투어 정보', bucket: false })
+  }
+  return opts
 }
 
 export default function GlobalPlaceDetail({
@@ -64,6 +87,23 @@ export default function GlobalPlaceDetail({
   const [status, setStatus] = useState<Status>('loading')
   const [data, setData] = useState<DetailData | null>(null)
   const [copied, setCopied] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+
+  // 즐겨찾기
+  const [favorited, setFavorited] = useState(false)
+  const [favBusy, setFavBusy] = useState(false)
+
+  // 신고
+  const [showReport, setShowReport] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportDone, setReportDone] = useState(false)
+
+  // 관찰 입력
+  const [showObs, setShowObs] = useState(false)
+  const [obsBusy, setObsBusy] = useState(false)
+
+  const supabase = createClient()
 
   const load = useCallback(async () => {
     setStatus('loading')
@@ -81,16 +121,84 @@ export default function GlobalPlaceDetail({
     load()
   }, [load])
 
+  // 로그인 상태 + 즐겨찾기 여부
+  useEffect(() => {
+    let alive = true
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (alive) setCurrentUser(user)
+    })
+    fetch(`/api/global/places/${placeId}/favorite`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive) setFavorited(!!j.favorited)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [placeId, supabase])
+
   const copyAddress = useCallback(async (address: string) => {
     try {
       await navigator.clipboard.writeText(address)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // clipboard 미지원 — 조용히 실패하지 않기
       alert('복사에 실패했습니다. 주소를 직접 선택해 주세요.')
     }
   }, [])
+
+  const toggleFavorite = useCallback(async () => {
+    if (!currentUser) {
+      alert('로그인이 필요한 기능입니다.')
+      return
+    }
+    if (favBusy) return
+    setFavBusy(true)
+    const next = !favorited
+    setFavorited(next) // 낙관적
+    try {
+      const res = await fetch(`/api/global/places/${placeId}/favorite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: next ? 'add' : 'remove' }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setFavorited(!next) // 롤백
+      alert('즐겨찾기 처리에 실패했습니다.')
+    } finally {
+      setFavBusy(false)
+    }
+  }, [currentUser, favBusy, favorited, placeId])
+
+  const submitReport = useCallback(async () => {
+    const reason = reportReason.trim()
+    if (!reason) return
+    if (!currentUser) {
+      alert('로그인이 필요한 기능입니다.')
+      return
+    }
+    setReportBusy(true)
+    try {
+      const res = await fetch('/api/global/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_type: 'place', target_id: placeId, reason }),
+      })
+      if (!res.ok) throw new Error()
+      setReportDone(true)
+      setReportReason('')
+      setTimeout(() => {
+        setShowReport(false)
+        setReportDone(false)
+      }, 1500)
+    } catch {
+      alert('신고 접수에 실패했습니다.')
+    } finally {
+      setReportBusy(false)
+    }
+  }, [reportReason, currentUser, placeId])
 
   if (status === 'loading') {
     return (
@@ -117,7 +225,6 @@ export default function GlobalPlaceDetail({
   const { place, reviews, bottleLogs, observations } = data
   const attrs = place.attributes ?? {}
 
-  // §8.2-4 재방문 의사 분포 (reviews.rating 집계)
   const rated = reviews.filter((r) => r.rating)
   const ratingCount = (k: string) => rated.filter((r) => r.rating === k).length
   const comments = reviews.filter((r) => r.comment && r.comment.trim() !== '')
@@ -167,25 +274,33 @@ export default function GlobalPlaceDetail({
             {place.region ? ` · ${place.region}` : ''}
             {place.address ? ` · ${place.address}` : ' · 주소 정보 없음'}
           </p>
-          {/* TODO(다음 슬라이스): global.reports 연동 신고 모달 */}
           <button
-            disabled
-            className="text-[11px] text-gray-400 border border-gray-200 rounded-md px-2 py-1 flex-shrink-0 cursor-not-allowed"
-            title="신고 기능은 준비중입니다"
+            onClick={() => {
+              if (!currentUser) {
+                alert('로그인이 필요한 기능입니다.')
+                return
+              }
+              setShowReport(true)
+            }}
+            className="text-[11px] text-gray-500 hover:text-red-500 border border-gray-200 rounded-md px-2 py-1 flex-shrink-0"
           >
-            신고 (준비중)
+            신고
           </button>
         </div>
 
-        {/* 3. 즐겨찾기 + 지도보기 */}
+        {/* 3. 즐겨찾기 + 지도보기 + 주소복사 */}
         <div className="flex gap-2 mt-3">
-          {/* TODO(다음 슬라이스): global.favorites 연동 */}
           <button
-            disabled
-            className="flex-1 py-2 text-xs font-medium rounded-lg border border-gray-200 text-gray-400 cursor-not-allowed"
-            title="즐겨찾기는 준비중입니다"
+            onClick={toggleFavorite}
+            disabled={favBusy}
+            className="flex-1 py-2 text-xs font-bold rounded-lg border disabled:opacity-60"
+            style={
+              favorited
+                ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
+                : { borderColor: '#e5e7eb', color: '#374151' }
+            }
           >
-            ☆ 즐겨찾기 (준비중)
+            {favorited ? '★ 즐겨찾기됨' : '☆ 즐겨찾기'}
           </button>
           {place.google_maps_url ? (
             <a
@@ -218,9 +333,7 @@ export default function GlobalPlaceDetail({
         {/* 4. 재방문 의사 분포 */}
         <SectionTitle>재방문 의사</SectionTitle>
         {rated.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            아직 후기가 없습니다. (후기 작성 기능 준비중)
-          </p>
+          <p className="text-xs text-gray-400">아직 후기가 없습니다. (후기 작성 기능 준비중)</p>
         ) : (
           <div className="space-y-1.5">
             {(
@@ -236,10 +349,7 @@ export default function GlobalPlaceDetail({
                 <div key={key} className="flex items-center gap-2">
                   <span className="text-[11px] text-gray-600 w-24 flex-shrink-0">{label}</span>
                   <div className="flex-1 h-2 rounded-full bg-surface-tertiary overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${pct}%`, background: 'var(--color-brand-primary)' }}
-                    />
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--color-brand-primary)' }} />
                   </div>
                   <span className="text-[11px] text-gray-500 w-10 text-right">{n}명</span>
                 </div>
@@ -248,7 +358,7 @@ export default function GlobalPlaceDetail({
           </div>
         )}
 
-        {/* 4-1. 면세 여부 (리쿼샵 — 일본 등에서 중요) */}
+        {/* 4-1. 면세 (리쿼샵) */}
         {place.type === 'liquor_shop' && (
           <p className="text-xs mt-2">
             <span className="font-medium text-gray-700">면세: </span>
@@ -258,7 +368,7 @@ export default function GlobalPlaceDetail({
           </p>
         )}
 
-        {/* 유형별 정보 (§8.2 유형별 본문) */}
+        {/* 유형별 정보 */}
         <SectionTitle>{GLOBAL_TYPE_LABEL[place.type] ?? '장소'} 정보</SectionTitle>
         <div className="divide-y divide-gray-100">
           {place.type === 'liquor_shop' && (
@@ -270,10 +380,7 @@ export default function GlobalPlaceDetail({
           )}
           {place.type === 'bar' && (
             <>
-              <InfoRow
-                label="커버차지"
-                value={attrs.cover_charge != null ? String(attrs.cover_charge) : '정보 없음'}
-              />
+              <InfoRow label="커버차지" value={attrs.cover_charge != null ? String(attrs.cover_charge) : '정보 없음'} />
               <InfoRow label="흡연" value={fmtBool(attrs.smoking, '흡연 가능', '금연')} />
               <InfoRow label="전문 주종" value={(attrs.specialty as string) ?? '정보 없음'} />
               <InfoRow
@@ -346,7 +453,7 @@ export default function GlobalPlaceDetail({
           )}
         </div>
 
-        {/* distillery: 투어 프로그램 (관리자 큐레이션 — §6) */}
+        {/* distillery: 투어·현장상품·독점정보 */}
         {isDistillery && (
           <>
             <SectionTitle>투어 프로그램</SectionTitle>
@@ -358,9 +465,7 @@ export default function GlobalPlaceDetail({
                   <li key={i} className="border border-gray-100 rounded-lg px-3 py-2">
                     <p className="text-xs font-bold text-gray-800">{t.name ?? '이름 미상'}</p>
                     <p className="text-[11px] text-gray-500 mt-0.5">
-                      {[t.type, t.season, t.duration, t.price != null ? `${t.price}` : null]
-                        .filter(Boolean)
-                        .join(' · ') || '상세 정보 없음'}
+                      {[t.type, t.season, t.duration, t.price != null ? `${t.price}` : null].filter(Boolean).join(' · ') || '상세 정보 없음'}
                       {t.booking_required && ' · 예약 필수'}
                     </p>
                   </li>
@@ -397,17 +502,13 @@ export default function GlobalPlaceDetail({
           <>
             <SectionTitle>기준 병가</SectionTitle>
             {!referencePrices || referencePrices.length === 0 ? (
-              <p className="text-xs text-gray-400">
-                가격 정보 없음 — 직접 등록해 주세요. (등록 기능 준비중)
-              </p>
+              <p className="text-xs text-gray-400">가격 정보 없음 — 직접 등록해 주세요. (등록 기능 준비중)</p>
             ) : (
               <ul className="space-y-1">
                 {referencePrices.map((rp, i) => (
                   <li key={i} className="text-xs text-gray-700 flex justify-between">
                     <span>{rp.product ?? '제품 미상'}</span>
-                    <span className="font-medium">
-                      {rp.price != null ? `${rp.price} ${rp.currency ?? ''}` : '가격 미상'}
-                    </span>
+                    <span className="font-medium">{rp.price != null ? `${rp.price} ${rp.currency ?? ''}` : '가격 미상'}</span>
                   </li>
                 ))}
               </ul>
@@ -415,14 +516,44 @@ export default function GlobalPlaceDetail({
           </>
         )}
 
-        {/* 관찰 데이터 (§8.4 — 검증 상태·관찰일 항상 노출) */}
-        <SectionTitle>최근 관찰 (카더라)</SectionTitle>
+        {/* 관찰 데이터 (§8.4) + 입력 */}
+        <SectionTitle
+          right={
+            <button
+              onClick={() => {
+                if (!currentUser) {
+                  alert('로그인이 필요한 기능입니다.')
+                  return
+                }
+                setShowObs((v) => !v)
+              }}
+              className="text-[11px] font-medium px-2 py-0.5 rounded-md border"
+              style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }}
+            >
+              {showObs ? '닫기' : '+ 관찰 추가'}
+            </button>
+          }
+        >
+          최근 관찰 (카더라)
+        </SectionTitle>
+
+        {showObs && (
+          <ObservationForm
+            placeId={placeId}
+            placeType={place.type}
+            busy={obsBusy}
+            setBusy={setObsBusy}
+            onDone={() => {
+              setShowObs(false)
+              load()
+            }}
+          />
+        )}
+
         {data.observationsFailed ? (
           <p className="text-xs text-gray-400">관찰 데이터를 불러오지 못했습니다.</p>
         ) : observations.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            관찰 데이터 없음 — 다녀오셨다면 알려주세요. (입력 기능 준비중)
-          </p>
+          <p className="text-xs text-gray-400">관찰 데이터 없음 — 다녀오셨다면 위 “관찰 추가”로 알려주세요.</p>
         ) : (
           <ul className="space-y-2">
             {observations.map((o) => {
@@ -430,9 +561,7 @@ export default function GlobalPlaceDetail({
               return (
                 <li key={o.id} className="border border-gray-100 rounded-lg px-3 py-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-gray-800">
-                      {OBS_TYPE_LABEL[o.obs_type] ?? o.obs_type}
-                    </span>
+                    <span className="text-xs font-bold text-gray-800">{OBS_TYPE_LABEL[o.obs_type] ?? o.obs_type}</span>
                     <span
                       className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                       style={
@@ -443,19 +572,14 @@ export default function GlobalPlaceDetail({
                     >
                       {o.verification_status === 'confirmed' ? '확정' : '미확정'}
                     </span>
-                    {o.obs_type === 'cask_level' && (
-                      <span className="text-[10px] text-gray-400">직원 말 기반 — 카더라</span>
-                    )}
+                    {o.obs_type === 'cask_level' && <span className="text-[10px] text-gray-400">직원 말 기반 — 카더라</span>}
                   </div>
                   <p className="text-xs text-gray-700 mt-1">
                     {o.value_bucket ? (VALUE_BUCKET_LABEL[o.value_bucket] ?? o.value_bucket) : o.value_text ?? '—'}
                     {o.note && <span className="text-gray-500"> · {o.note}</span>}
                   </p>
                   <p className="text-[11px] mt-1 flex items-center gap-1.5">
-                    <span
-                      className="inline-block w-2 h-2 rounded-full"
-                      style={{ background: freshnessColor(days) }}
-                    />
+                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: freshnessColor(days) }} />
                     <span className="text-gray-500">
                       {o.observed_at} ({days === 0 ? '오늘' : `${days}일 전`})
                     </span>
@@ -467,40 +591,29 @@ export default function GlobalPlaceDetail({
           </ul>
         )}
 
-        {/* 5. 태그 — TODO: global 스키마에 태그 테이블이 스펙 §5에 정의되지 않음.
-            스펙 확정 후 구현 (추측으로 만들지 않는다). */}
+        {/* 5. 태그 — global 스키마에 태그 테이블 미정(§5). 확정 후 구현. */}
         <SectionTitle>태그</SectionTitle>
         <p className="text-xs text-gray-400">태그 기능 준비중</p>
 
-        {/* 6. 사진 / 구매 인증 (bottle_logs public_minimal) */}
+        {/* 6. 사진 / 구매 인증 */}
         <SectionTitle>사진 / 구매 인증</SectionTitle>
         {data.bottleLogsFailed ? (
           <p className="text-xs text-gray-400">구매 인증을 불러오지 못했습니다.</p>
         ) : bottleLogs.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            구매 인증이 아직 없습니다. (등록 기능 준비중)
-          </p>
+          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. (등록 기능 준비중)</p>
         ) : (
           <ul className="space-y-2">
             {bottleLogs.map((b) => (
               <li key={b.id} className="border border-gray-100 rounded-lg px-3 py-2">
                 {b.photo_url && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={b.photo_url}
-                    alt=""
-                    className="w-full max-h-44 object-cover rounded-md mb-2"
-                  />
+                  <img src={b.photo_url} alt="" className="w-full max-h-44 object-cover rounded-md mb-2" />
                 )}
-                <p className="text-xs font-bold text-gray-800">
-                  {b.product?.display_name ?? b.free_label ?? '보틀명 미상'}
-                </p>
+                <p className="text-xs font-bold text-gray-800">{b.product?.display_name ?? b.free_label ?? '보틀명 미상'}</p>
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   {BOTTLE_CONTEXT_LABEL[b.context] ?? b.context}
                   {b.price != null && ` · ${b.price} ${b.currency ?? ''}`}
-                  {b.price != null && b.fx_to_krw != null && (
-                    <span> (약 ₩{Math.round(b.price * b.fx_to_krw).toLocaleString()})</span>
-                  )}
+                  {b.price != null && b.fx_to_krw != null && <span> (약 ₩{Math.round(b.price * b.fx_to_krw).toLocaleString()})</span>}
                 </p>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   {b.user?.nickname ?? '익명'} · {b.logged_at}
@@ -515,9 +628,7 @@ export default function GlobalPlaceDetail({
         {data.reviewsFailed ? (
           <p className="text-xs text-gray-400">한줄평을 불러오지 못했습니다.</p>
         ) : comments.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            한줄평이 아직 없습니다. (작성 기능 준비중)
-          </p>
+          <p className="text-xs text-gray-400">한줄평이 아직 없습니다. (작성 기능 준비중)</p>
         ) : (
           <ul className="space-y-2">
             {comments.map((r) => (
@@ -539,11 +650,185 @@ export default function GlobalPlaceDetail({
 
         {/* 기여자 표시 (§10) */}
         <p className="text-[11px] text-gray-400 mt-6">
-          {place.source === 'seed'
-            ? '운영진이 직접 조사해 등록한 장소입니다.'
-            : `등록: ${place.contributor?.nickname ?? '익명'}`}
+          {place.source === 'seed' ? '운영진이 직접 조사해 등록한 장소입니다.' : `등록: ${place.contributor?.nickname ?? '익명'}`}
         </p>
       </div>
+
+      {/* 신고 모달 */}
+      {showReport && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 px-6" onClick={() => setShowReport(false)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            {reportDone ? (
+              <p className="text-sm text-center text-gray-800 py-4">신고가 접수되었습니다. 감사합니다.</p>
+            ) : (
+              <>
+                <h3 className="text-sm font-bold text-gray-900">장소 신고</h3>
+                <p className="text-xs text-gray-500 mt-1">부적절한 정보·중복·폐업 등 사유를 적어주세요.</p>
+                <textarea
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  className="w-full mt-3 text-xs border border-gray-200 rounded-lg p-2 resize-none"
+                  placeholder="신고 사유 (1~500자)"
+                />
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => setShowReport(false)} className="flex-1 py-2 text-xs font-medium rounded-lg border border-gray-300 text-gray-700">
+                    취소
+                  </button>
+                  <button
+                    onClick={submitReport}
+                    disabled={reportBusy || !reportReason.trim()}
+                    className="flex-1 py-2 text-xs font-bold rounded-lg text-white disabled:opacity-50"
+                    style={{ background: 'var(--color-brand-primary)' }}
+                  >
+                    {reportBusy ? '접수 중…' : '신고하기'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── 관찰 입력 폼 ───────────────────────────────────────────────────────────
+function ObservationForm({
+  placeId,
+  placeType,
+  busy,
+  setBusy,
+  onDone,
+}: {
+  placeId: string
+  placeType: string
+  busy: boolean
+  setBusy: (v: boolean) => void
+  onDone: () => void
+}) {
+  const options = obsOptionsFor(placeType)
+  const [obsType, setObsType] = useState(options[0]?.key ?? 'price')
+  const [bucket, setBucket] = useState('half')
+  const [valueText, setValueText] = useState('')
+  const [note, setNote] = useState('')
+  const [observedAt, setObservedAt] = useState(() => new Date().toISOString().slice(0, 10))
+
+  const current = options.find((o) => o.key === obsType)
+  const isBucket = current?.bucket ?? false
+
+  const submit = async () => {
+    if (busy) return
+    if (!isBucket && !valueText.trim()) {
+      alert('관찰 값을 입력해주세요.')
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/global/places/${placeId}/observations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          obs_type: obsType,
+          value_bucket: isBucket ? bucket : null,
+          value_text: isBucket ? null : valueText.trim(),
+          note: note.trim() || null,
+          observed_at: observedAt,
+        }),
+      })
+      if (res.status === 401) {
+        alert('로그인이 필요한 기능입니다.')
+        return
+      }
+      if (!res.ok) throw new Error()
+      onDone()
+    } catch {
+      alert('관찰 등록에 실패했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 mb-3 bg-gray-50 space-y-2">
+      <div className="flex flex-wrap gap-1">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            onClick={() => setObsType(o.key)}
+            className="text-[11px] font-medium px-2 py-1 rounded-full border"
+            style={
+              obsType === o.key
+                ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
+                : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+            }
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {isBucket ? (
+        <div className="flex gap-1">
+          {(
+            [
+              { k: 'plenty', l: '넉넉함' },
+              { k: 'half', l: '절반' },
+              { k: 'low', l: '얼마 없음' },
+              { k: 'unknown', l: '모름' },
+            ] as const
+          ).map(({ k, l }) => (
+            <button
+              key={k}
+              onClick={() => setBucket(k)}
+              className="flex-1 text-[11px] font-medium py-1.5 rounded-lg border"
+              style={
+                bucket === k
+                  ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
+                  : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+              }
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <input
+          value={valueText}
+          onChange={(e) => setValueText(e.target.value)}
+          placeholder={obsType === 'price' ? '예: 12000엔' : obsType === 'stock' ? '예: 재고 있음 / 품절' : '관찰 내용'}
+          className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+        />
+      )}
+
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="메모 (선택)"
+        className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+      />
+      <div className="flex items-center gap-2">
+        <label className="text-[11px] text-gray-500 flex-shrink-0">관찰일</label>
+        <input
+          type="date"
+          value={observedAt}
+          max={new Date().toISOString().slice(0, 10)}
+          onChange={(e) => setObservedAt(e.target.value)}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5"
+        />
+        <button
+          onClick={submit}
+          disabled={busy}
+          className="ml-auto px-4 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-50"
+          style={{ background: 'var(--color-brand-primary)' }}
+        >
+          {busy ? '등록 중…' : '등록'}
+        </button>
+      </div>
+      {obsType === 'cask_level' && (
+        <p className="text-[10px] text-gray-400">※ 캐스크 잔량은 직원 말 기반 “카더라”로 표시됩니다.</p>
+      )}
     </div>
   )
 }
