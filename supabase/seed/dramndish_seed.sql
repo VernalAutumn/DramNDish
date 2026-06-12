@@ -49,6 +49,16 @@ values
    'https://milroys.co.uk',
    '{}'::jsonb),
 
+  -- 핸드필 보유 리쿼샵 — 리쿼샵 중 핸드필은 리쿼 마운틴에만 적용 (2026-06-13 운영 결정)
+  -- TODO: 핸드필 운영 지점·주소·좌표 확인 후 보정 (좌표는 카와라마치 인근 근사값)
+  ('리쿼 마운틴 시조카와라마치', 'リカーマウンテン 四条河原町店',
+   'liquor_shop', null, 'JP', '교토',
+   'Kawaramachi-dori, Shimogyo-ku, Kyoto', 35.0036, 135.7686,
+   'seed',
+   'https://www.google.com/maps/search/?api=1&query=Liquor+Mountain+Shijo+Kawaramachi',
+   'https://likaman.co.jp',
+   '{"has_handfill": true}'::jsonb),
+
   -- 독립병입 직영점 (subkind=ib_shop — §5 places.subkind)
   -- TODO(region 규칙 §6): UK region은 위스키 지역 태그 기준. 에든버러 시내 매장이라
   --   통용 표기가 애매함 — 일단 '로우랜드'. 큐레이션 확정 시 조정.

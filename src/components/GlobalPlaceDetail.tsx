@@ -61,9 +61,17 @@ function SectionTitle({ children, right }: { children: React.ReactNode; right?: 
 }
 
 // 장소 유형별 관찰 입력에서 고를 수 있는 obs_type
-function obsOptionsFor(type: string): { key: string; label: string; bucket: boolean }[] {
+// 핸드필 캐스크 잔량은 "핸드필이 있는 가게"에만 노출 —
+// 리쿼샵은 attributes.has_handfill, 증류소는 attributes.handfill 이 true일 때만.
+function obsOptionsFor(
+  type: string,
+  attrs: Record<string, unknown>
+): { key: string; label: string; bucket: boolean }[] {
   const opts: { key: string; label: string; bucket: boolean }[] = []
-  if (type === 'liquor_shop' || type === 'distillery') {
+  const hasHandfill =
+    (type === 'liquor_shop' && attrs.has_handfill === true) ||
+    (type === 'distillery' && attrs.handfill === true)
+  if (hasHandfill) {
     opts.push({ key: 'cask_level', label: '핸드필 캐스크 잔량', bucket: true })
   }
   if (type === 'bar') {
@@ -374,7 +382,10 @@ export default function GlobalPlaceDetail({
           {place.type === 'liquor_shop' && (
             <>
               <InfoRow label="시음" value={fmtBool(attrs.has_tasting, '가능', '불가')} />
-              <InfoRow label="핸드필" value={fmtBool(attrs.has_handfill, '있음', '없음')} />
+              {/* 핸드필 행은 has_handfill 키가 있는 가게(예: 리쿼 마운틴)에만 노출 */}
+              {attrs.has_handfill !== undefined && (
+                <InfoRow label="핸드필" value={fmtBool(attrs.has_handfill, '있음', '없음')} />
+              )}
               <InfoRow label="영업시간" value={(attrs.hours as string) ?? '정보 없음'} />
             </>
           )}
@@ -541,6 +552,7 @@ export default function GlobalPlaceDetail({
           <ObservationForm
             placeId={placeId}
             placeType={place.type}
+            placeAttrs={attrs}
             busy={obsBusy}
             setBusy={setObsBusy}
             onDone={() => {
@@ -698,17 +710,19 @@ export default function GlobalPlaceDetail({
 function ObservationForm({
   placeId,
   placeType,
+  placeAttrs,
   busy,
   setBusy,
   onDone,
 }: {
   placeId: string
   placeType: string
+  placeAttrs: Record<string, unknown>
   busy: boolean
   setBusy: (v: boolean) => void
   onDone: () => void
 }) {
-  const options = obsOptionsFor(placeType)
+  const options = obsOptionsFor(placeType, placeAttrs)
   const [obsType, setObsType] = useState(options[0]?.key ?? 'price')
   const [bucket, setBucket] = useState('half')
   const [valueText, setValueText] = useState('')
