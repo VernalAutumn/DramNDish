@@ -26,18 +26,23 @@ export interface GlobalReview {
   comment: string | null
   visited_at: string
   photo_urls: string[]
+  companion_type: 'solo' | 'friends' | 'couple' | 'family' | null
+  party_size: number | null
   created_at: string
   user: { nickname: string | null } | null
+  votes: { vote: 'helpful' | 'not_helpful'; user_id: string }[]
 }
 
 export interface GlobalBottleLog {
   id: string
+  review_id: string | null
   free_label: string | null
   context: string
   price: number | null
   currency: string | null
   fx_to_krw: number | null
   photo_url: string | null
+  photo_urls: string[]
   logged_at: string
   product: { display_name: string } | null
   user: { nickname: string | null } | null
@@ -91,6 +96,22 @@ export const VALUE_BUCKET_LABEL: Record<string, string> = {
 
 export function countryLabel(code: string): string {
   return COUNTRY_LABEL[code] ?? code
+}
+
+// ★ 3단 별점 (사용자 설계): meh=1성 별로 / fine=2성 무난 / revisit=3성 최고
+export const RATING_STARS: Record<string, number> = { meh: 1, fine: 2, revisit: 3 }
+export const RATING_LABEL: Record<string, string> = { meh: '별로', fine: '무난', revisit: '최고' }
+
+export const COMPANION_LABEL: Record<string, string> = {
+  solo: '혼자',
+  friends: '친구',
+  couple: '연인',
+  family: '가족',
+}
+
+// 소모 비용 기본 통화 (국가 기준)
+export function defaultCurrency(country: string): string {
+  return { JP: 'JPY', UK: 'GBP', US: 'USD', TW: 'TWD' }[country] ?? ''
 }
 
 export function daysSince(dateStr: string): number {

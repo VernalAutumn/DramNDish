@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
+import GlobalReviewForm from './GlobalReviewForm'
 import {
   GlobalPlace,
   GlobalReview,
@@ -12,6 +13,9 @@ import {
   BOTTLE_CONTEXT_LABEL,
   OBS_TYPE_LABEL,
   VALUE_BUCKET_LABEL,
+  RATING_STARS,
+  RATING_LABEL,
+  COMPANION_LABEL,
   countryLabel,
   daysSince,
   freshnessColor,
@@ -110,6 +114,10 @@ export default function GlobalPlaceDetail({
   // 관찰 입력
   const [showObs, setShowObs] = useState(false)
   const [obsBusy, setObsBusy] = useState(false)
+
+  // 후기 작성
+  const [showReviewForm, setShowReviewForm] = useState(false)
+  const [voteBusy, setVoteBusy] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -235,7 +243,41 @@ export default function GlobalPlaceDetail({
 
   const rated = reviews.filter((r) => r.rating)
   const ratingCount = (k: string) => rated.filter((r) => r.rating === k).length
-  const comments = reviews.filter((r) => r.comment && r.comment.trim() !== '')
+
+  // 후기에 연결된 "좋았던 메뉴/한 잔" — 후기 카드 안에서 표시 (구글 리뷰식)
+  const favoriteLogOf = (reviewId: string) =>
+    bottleLogs.find(
+      (b) =>
+        b.review_id === reviewId &&
+        (b.context === 'bar_favorite' || b.context === 'restaurant_favorite')
+    )
+  // 구매 인증 섹션엔 후기 카드에 들어간 항목 제외
+  const purchaseLogs = bottleLogs.filter(
+    (b) => !(b.review_id && (b.context === 'bar_favorite' || b.context === 'restaurant_favorite'))
+  )
+
+  const onVote = async (review: GlobalReview, kind: 'helpful' | 'not_helpful') => {
+    if (!currentUser) {
+      alert('로그인이 필요한 기능입니다.')
+      return
+    }
+    if (voteBusy) return
+    const myVote = review.votes.find((v) => v.user_id === currentUser.id)?.vote
+    setVoteBusy(review.id)
+    try {
+      const res = await fetch(`/api/global/reviews/${review.id}/vote`, {
+        method: myVote === kind ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: myVote === kind ? undefined : JSON.stringify({ vote: kind }),
+      })
+      if (!res.ok) throw new Error()
+      await load()
+    } catch {
+      alert('투표에 실패했습니다.')
+    } finally {
+      setVoteBusy(null)
+    }
+  }
 
   const isDistillery = place.type === 'distillery'
   const tourPrograms = attrs.tour_programs as
@@ -338,17 +380,17 @@ export default function GlobalPlaceDetail({
           )}
         </div>
 
-        {/* 4. 재방문 의사 분포 */}
+        {/* 4. 재방문 의사 분포 (★ 3단 집계) */}
         <SectionTitle>재방문 의사</SectionTitle>
         {rated.length === 0 ? (
-          <p className="text-xs text-gray-400">아직 후기가 없습니다. (후기 작성 기능 준비중)</p>
+          <p className="text-xs text-gray-400">아직 평가가 없습니다.</p>
         ) : (
           <div className="space-y-1.5">
             {(
               [
-                { key: 'revisit', label: '또 가고 싶어요' },
-                { key: 'fine', label: '괜찮았어요' },
-                { key: 'meh', label: '아쉬웠어요' },
+                { key: 'revisit', label: '★★★ 최고' },
+                { key: 'fine', label: '★★ 무난' },
+                { key: 'meh', label: '★ 별로' },
               ] as const
             ).map(({ key, label }) => {
               const n = ratingCount(key)
@@ -607,19 +649,19 @@ export default function GlobalPlaceDetail({
         <SectionTitle>태그</SectionTitle>
         <p className="text-xs text-gray-400">태그 기능 준비중</p>
 
-        {/* 6. 사진 / 구매 인증 */}
+        {/* 6. 사진 / 구매 인증 (후기에 연결된 메뉴/한 잔은 후기 카드에 표시) */}
         <SectionTitle>사진 / 구매 인증</SectionTitle>
         {data.bottleLogsFailed ? (
           <p className="text-xs text-gray-400">구매 인증을 불러오지 못했습니다.</p>
-        ) : bottleLogs.length === 0 ? (
+        ) : purchaseLogs.length === 0 ? (
           <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. (등록 기능 준비중)</p>
         ) : (
           <ul className="space-y-2">
-            {bottleLogs.map((b) => (
+            {purchaseLogs.map((b) => (
               <li key={b.id} className="border border-gray-100 rounded-lg px-3 py-2">
-                {b.photo_url && (
+                {(b.photo_urls?.[0] ?? b.photo_url) && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={b.photo_url} alt="" className="w-full max-h-44 object-cover rounded-md mb-2" />
+                  <img src={b.photo_urls?.[0] ?? b.photo_url!} alt="" className="w-full max-h-44 object-cover rounded-md mb-2" />
                 )}
                 <p className="text-xs font-bold text-gray-800">{b.product?.display_name ?? b.free_label ?? '보틀명 미상'}</p>
                 <p className="text-[11px] text-gray-500 mt-0.5">
@@ -635,28 +677,119 @@ export default function GlobalPlaceDetail({
           </ul>
         )}
 
-        {/* 7. 한줄평 */}
-        <SectionTitle>한줄평</SectionTitle>
+        {/* 7. 후기 — 구글 리뷰식 노출 (공유 없음, 좋아요 대신 유용해요/유용하지않아요) */}
+        <SectionTitle
+          right={
+            <button
+              onClick={() => {
+                if (!currentUser) {
+                  alert('로그인이 필요한 기능입니다.')
+                  return
+                }
+                setShowReviewForm(true)
+              }}
+              className="text-[11px] font-medium px-2 py-0.5 rounded-md border"
+              style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }}
+            >
+              + 후기 쓰기
+            </button>
+          }
+        >
+          후기
+        </SectionTitle>
         {data.reviewsFailed ? (
-          <p className="text-xs text-gray-400">한줄평을 불러오지 못했습니다.</p>
-        ) : comments.length === 0 ? (
-          <p className="text-xs text-gray-400">한줄평이 아직 없습니다. (작성 기능 준비중)</p>
+          <p className="text-xs text-gray-400">후기를 불러오지 못했습니다.</p>
+        ) : reviews.length === 0 ? (
+          <p className="text-xs text-gray-400">아직 후기가 없습니다 — 첫 후기를 남겨주세요.</p>
         ) : (
-          <ul className="space-y-2">
-            {comments.map((r) => (
-              <li key={r.id} className="border border-gray-100 rounded-lg px-3 py-2">
-                <p className="text-xs text-gray-800">{r.comment}</p>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  {r.user?.nickname ?? '익명'} · 방문 {r.visited_at}
-                  {r.rating && (
-                    <span>
-                      {' · '}
-                      {r.rating === 'revisit' ? '또 가고 싶어요' : r.rating === 'fine' ? '괜찮았어요' : '아쉬웠어요'}
-                    </span>
+          <ul className="space-y-3">
+            {reviews.map((r) => {
+              const fav = favoriteLogOf(r.id)
+              const photos = [...(r.photo_urls ?? []), ...(fav?.photo_urls ?? [])].slice(0, 4)
+              const helpful = r.votes.filter((v) => v.vote === 'helpful').length
+              const notHelpful = r.votes.filter((v) => v.vote === 'not_helpful').length
+              const myVote = currentUser ? r.votes.find((v) => v.user_id === currentUser.id)?.vote : undefined
+              return (
+                <li key={r.id} className="border border-gray-100 rounded-xl px-3.5 py-3">
+                  {/* 작성자 · 방문 정보 */}
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-gray-900">{r.user?.nickname ?? '익명'}</p>
+                    <p className="text-[11px] text-gray-400">방문 {r.visited_at}</p>
+                  </div>
+                  {(r.rating || r.companion_type || r.party_size) && (
+                    <p className="text-[11px] mt-0.5">
+                      {r.rating && (
+                        <span style={{ color: 'var(--color-brand-primary)' }}>
+                          {'★'.repeat(RATING_STARS[r.rating])}
+                          <span className="text-gray-300">{'★'.repeat(3 - RATING_STARS[r.rating])}</span>
+                          <span className="text-gray-500 ml-1">{RATING_LABEL[r.rating]}</span>
+                        </span>
+                      )}
+                      {(r.companion_type || r.party_size) && (
+                        <span className="text-gray-400">
+                          {r.rating && ' · '}
+                          {r.companion_type ? COMPANION_LABEL[r.companion_type] : ''}
+                          {r.party_size ? ` ${r.party_size}인` : ''}
+                        </span>
+                      )}
+                    </p>
                   )}
-                </p>
-              </li>
-            ))}
+
+                  {/* 코멘트 */}
+                  {r.comment && <p className="text-xs text-gray-800 mt-1.5 whitespace-pre-wrap">{r.comment}</p>}
+
+                  {/* 사진 그리드 (후기 사진 + 좋았던 메뉴 사진) */}
+                  {photos.length > 0 && (
+                    <div className={`grid gap-1.5 mt-2 ${photos.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      {photos.map((url, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={url} alt="" className="w-full h-28 object-cover rounded-lg" />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 좋았던 메뉴/한 잔 */}
+                  {fav && (
+                    <p className="text-[11px] text-gray-600 mt-1.5">
+                      <span className="font-medium" style={{ color: 'var(--color-brand-primary)' }}>
+                        {fav.context === 'bar_favorite' ? '가장 좋았던 한 잔' : '가장 좋았던 메뉴'}
+                      </span>
+                      {' · '}
+                      {fav.product?.display_name ?? fav.free_label}
+                      {fav.price != null && ` · ${fav.price} ${fav.currency ?? ''}`}
+                    </p>
+                  )}
+
+                  {/* 유용해요 / 유용하지 않아요 (공유 버튼 없음) */}
+                  <div className="flex gap-2 mt-2.5">
+                    <button
+                      onClick={() => onVote(r, 'helpful')}
+                      disabled={voteBusy === r.id}
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-full border disabled:opacity-50"
+                      style={
+                        myVote === 'helpful'
+                          ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
+                          : { borderColor: '#e5e7eb', color: '#6b7280' }
+                      }
+                    >
+                      👍 유용해요{helpful > 0 && ` ${helpful}`}
+                    </button>
+                    <button
+                      onClick={() => onVote(r, 'not_helpful')}
+                      disabled={voteBusy === r.id}
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-full border disabled:opacity-50"
+                      style={
+                        myVote === 'not_helpful'
+                          ? { borderColor: '#6b7280', color: '#374151', background: '#f3f4f6' }
+                          : { borderColor: '#e5e7eb', color: '#6b7280' }
+                      }
+                    >
+                      👎 유용하지 않아요{notHelpful > 0 && ` ${notHelpful}`}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
 
@@ -701,6 +834,21 @@ export default function GlobalPlaceDetail({
             )}
           </div>
         </div>
+      )}
+
+      {/* 후기 작성 모달 (식당·바 = 상세 폼 / 그 외 = 코멘트만) */}
+      {showReviewForm && currentUser && (
+        <GlobalReviewForm
+          placeId={placeId}
+          placeType={place.type}
+          placeCountry={place.country}
+          currentUser={currentUser}
+          onClose={() => setShowReviewForm(false)}
+          onDone={() => {
+            setShowReviewForm(false)
+            load()
+          }}
+        />
       )}
     </div>
   )
