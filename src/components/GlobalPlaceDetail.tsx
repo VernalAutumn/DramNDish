@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
+import GlobalPurchaseForm from './GlobalPurchaseForm'
 import {
   GlobalPlace,
   GlobalReview,
@@ -103,11 +104,14 @@ export default function GlobalPlaceDetail({
   const [favorited, setFavorited] = useState(false)
   const [favBusy, setFavBusy] = useState(false)
 
-  // 신고
-  const [showReport, setShowReport] = useState(false)
+  // 신고 — 장소(§8.2-2)와 후기(§8.2-8) 모두 대상
+  const [reportTarget, setReportTarget] = useState<{ type: 'place' | 'review'; id: string } | null>(null)
   const [reportReason, setReportReason] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const [reportDone, setReportDone] = useState(false)
+
+  // 구매 인증 추가
+  const [showPurchaseForm, setShowPurchaseForm] = useState(false)
 
   // 관찰 입력
   const [showObs, setShowObs] = useState(false)
@@ -188,7 +192,7 @@ export default function GlobalPlaceDetail({
 
   const submitReport = useCallback(async () => {
     const reason = reportReason.trim()
-    if (!reason) return
+    if (!reason || !reportTarget) return
     if (!currentUser) {
       alert('로그인이 필요한 기능입니다.')
       return
@@ -198,13 +202,13 @@ export default function GlobalPlaceDetail({
       const res = await fetch('/api/global/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_type: 'place', target_id: placeId, reason }),
+        body: JSON.stringify({ target_type: reportTarget.type, target_id: reportTarget.id, reason }),
       })
       if (!res.ok) throw new Error()
       setReportDone(true)
       setReportReason('')
       setTimeout(() => {
-        setShowReport(false)
+        setReportTarget(null)
         setReportDone(false)
       }, 1500)
     } catch {
@@ -212,7 +216,36 @@ export default function GlobalPlaceDetail({
     } finally {
       setReportBusy(false)
     }
-  }, [reportReason, currentUser, placeId])
+  }, [reportReason, reportTarget, currentUser])
+
+  // 본인 작성물 삭제 (§8.2-6·7)
+  const deleteReview = useCallback(
+    async (reviewId: string) => {
+      if (!confirm('이 후기를 삭제할까요? 연결된 메뉴/한 잔 기록도 함께 삭제됩니다.')) return
+      try {
+        const res = await fetch(`/api/global/reviews/${reviewId}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error()
+        await load()
+      } catch {
+        alert('삭제에 실패했습니다.')
+      }
+    },
+    [load]
+  )
+
+  const deleteLog = useCallback(
+    async (logId: string) => {
+      if (!confirm('이 구매 인증을 삭제할까요?')) return
+      try {
+        const res = await fetch(`/api/global/bottle-logs/${logId}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error()
+        await load()
+      } catch {
+        alert('삭제에 실패했습니다.')
+      }
+    },
+    [load]
+  )
 
   if (status === 'loading') {
     return (
@@ -328,7 +361,7 @@ export default function GlobalPlaceDetail({
                 alert('로그인이 필요한 기능입니다.')
                 return
               }
-              setShowReport(true)
+              setReportTarget({ type: 'place', id: placeId })
             }}
             className="text-[11px] text-gray-500 hover:text-red-500 border border-gray-200 rounded-md px-2 py-1 flex-shrink-0"
           >
@@ -648,7 +681,27 @@ export default function GlobalPlaceDetail({
         <p className="text-xs text-gray-400">태그 기능 준비중</p>
 
         {/* 6. 사진 / 구매 인증 (후기에 연결된 메뉴/한 잔은 후기 카드에 표시) */}
-        <SectionTitle>사진 / 구매 인증</SectionTitle>
+        <SectionTitle
+          right={
+            place.type === 'liquor_shop' || place.type === 'distillery' ? (
+              <button
+                onClick={() => {
+                  if (!currentUser) {
+                    alert('로그인이 필요한 기능입니다.')
+                    return
+                  }
+                  setShowPurchaseForm(true)
+                }}
+                className="text-[11px] font-medium px-2 py-0.5 rounded-md border"
+                style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }}
+              >
+                + 인증 추가
+              </button>
+            ) : undefined
+          }
+        >
+          사진 / 구매 인증
+        </SectionTitle>
         {data.bottleLogsFailed ? (
           <p className="text-xs text-gray-400">구매 인증을 불러오지 못했습니다.</p>
         ) : purchaseLogs.length === 0 ? (
@@ -667,9 +720,16 @@ export default function GlobalPlaceDetail({
                   {b.price != null && ` · ${b.price} ${b.currency ?? ''}`}
                   {b.price != null && b.fx_to_krw != null && <span> (약 ₩{Math.round(b.price * b.fx_to_krw).toLocaleString()})</span>}
                 </p>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  {b.user?.nickname ?? '익명'} · {b.logged_at}
-                </p>
+                <div className="flex items-center justify-between mt-0.5">
+                  <p className="text-[11px] text-gray-400">
+                    {b.user?.nickname ?? '익명'} · {b.logged_at}
+                  </p>
+                  {currentUser?.id === b.user_id && (
+                    <button onClick={() => deleteLog(b.id)} className="text-[11px] text-gray-400 hover:text-red-500 underline">
+                      삭제
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -784,6 +844,27 @@ export default function GlobalPlaceDetail({
                     >
                       👎 유용하지 않아요{notHelpful > 0 && ` ${notHelpful}`}
                     </button>
+                    {currentUser?.id === r.user_id ? (
+                      <button
+                        onClick={() => deleteReview(r.id)}
+                        className="ml-auto text-[11px] text-gray-400 hover:text-red-500 underline"
+                      >
+                        삭제
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (!currentUser) {
+                            alert('로그인이 필요한 기능입니다.')
+                            return
+                          }
+                          setReportTarget({ type: 'review', id: r.id })
+                        }}
+                        className="ml-auto text-[11px] text-gray-400 hover:text-red-500 underline"
+                      >
+                        신고
+                      </button>
+                    )}
                   </div>
                 </li>
               )
@@ -797,16 +878,20 @@ export default function GlobalPlaceDetail({
         </p>
       </div>
 
-      {/* 신고 모달 */}
-      {showReport && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 px-6" onClick={() => setShowReport(false)}>
+      {/* 신고 모달 (장소/후기 공용) */}
+      {reportTarget && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 px-6" onClick={() => setReportTarget(null)}>
           <div className="bg-white rounded-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             {reportDone ? (
               <p className="text-sm text-center text-gray-800 py-4">신고가 접수되었습니다. 감사합니다.</p>
             ) : (
               <>
-                <h3 className="text-sm font-bold text-gray-900">장소 신고</h3>
-                <p className="text-xs text-gray-500 mt-1">부적절한 정보·중복·폐업 등 사유를 적어주세요.</p>
+                <h3 className="text-sm font-bold text-gray-900">{reportTarget.type === 'place' ? '장소 신고' : '후기 신고'}</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {reportTarget.type === 'place'
+                    ? '부적절한 정보·중복·폐업 등 사유를 적어주세요.'
+                    : '부적절한 내용·광고·도배 등 사유를 적어주세요.'}
+                </p>
                 <textarea
                   value={reportReason}
                   onChange={(e) => setReportReason(e.target.value)}
@@ -816,7 +901,7 @@ export default function GlobalPlaceDetail({
                   placeholder="신고 사유 (1~500자)"
                 />
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => setShowReport(false)} className="flex-1 py-2 text-xs font-medium rounded-lg border border-gray-300 text-gray-700">
+                  <button onClick={() => setReportTarget(null)} className="flex-1 py-2 text-xs font-medium rounded-lg border border-gray-300 text-gray-700">
                     취소
                   </button>
                   <button
@@ -832,6 +917,21 @@ export default function GlobalPlaceDetail({
             )}
           </div>
         </div>
+      )}
+
+      {/* 구매 인증 모달 (리쿼샵·증류소) */}
+      {showPurchaseForm && currentUser && (place.type === 'liquor_shop' || place.type === 'distillery') && (
+        <GlobalPurchaseForm
+          placeId={placeId}
+          placeType={place.type}
+          placeCountry={place.country}
+          currentUser={currentUser}
+          onClose={() => setShowPurchaseForm(false)}
+          onDone={() => {
+            setShowPurchaseForm(false)
+            load()
+          }}
+        />
       )}
 
       {/* 후기 작성 모달 (식당·바 = 상세 폼 / 그 외 = 코멘트만) */}

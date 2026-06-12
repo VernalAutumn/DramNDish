@@ -22,6 +22,7 @@ export interface GlobalPlace {
 
 export interface GlobalReview {
   id: string
+  user_id: string
   rating: 'revisit' | 'fine' | 'meh' | null
   comment: string | null
   visited_at: string
@@ -35,6 +36,7 @@ export interface GlobalReview {
 
 export interface GlobalBottleLog {
   id: string
+  user_id: string
   review_id: string | null
   free_label: string | null
   context: string

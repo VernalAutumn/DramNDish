@@ -23,14 +23,14 @@ export async function GET(
       supabase
         .from('reviews')
         .select(
-          'id, rating, comment, visited_at, photo_urls, companion_type, party_size, created_at, user:users!reviews_user_id_fkey(nickname), votes:review_votes(vote, user_id)'
+          'id, user_id, rating, comment, visited_at, photo_urls, companion_type, party_size, created_at, user:users!reviews_user_id_fkey(nickname), votes:review_votes(vote, user_id)'
         )
         .eq('place_id', id)
         .order('created_at', { ascending: false }),
       supabase
         .from('bottle_logs')
         .select(
-          'id, review_id, free_label, context, price, currency, fx_to_krw, photo_url, photo_urls, logged_at, product:products(display_name), user:users!bottle_logs_user_id_fkey(nickname)'
+          'id, user_id, review_id, free_label, context, price, currency, fx_to_krw, photo_url, photo_urls, logged_at, product:products(display_name), user:users!bottle_logs_user_id_fkey(nickname)'
         )
         .eq('place_id', id)
         .order('logged_at', { ascending: false }),
