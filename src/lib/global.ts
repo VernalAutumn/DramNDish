@@ -81,9 +81,9 @@ export const BOTTLE_CONTEXT_LABEL: Record<string, string> = {
 
 export const OBS_TYPE_LABEL: Record<string, string> = {
   cask_level: '핸드필 캐스크 잔량',
-  bottle_level: '보틀 잔량',
-  price: '가격',
-  stock: '재고',
+  bottle_level: '보틀 잔량', // 입력 중단 — 과거 데이터 표시용
+  price: '가격·재고', // 입력은 가격·재고 통합 (2026-06-13)
+  stock: '재고', // 과거 데이터 표시용
   tour_info: '투어 정보',
 }
 

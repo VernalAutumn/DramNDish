@@ -42,10 +42,12 @@ export async function POST(
   }
 
   if (action === 'add') {
+    // upsert(ON CONFLICT DO UPDATE)는 UPDATE 권한을 요구하는데 favorites엔
+    // insert/delete만 GRANT되어 있다 → 일반 insert + 중복(23505)은 성공 처리.
     const { error } = await client
       .from('favorites')
-      .upsert({ user_id: user.id, place_id: id }, { onConflict: 'user_id,place_id' })
-    if (error) {
+      .insert({ user_id: user.id, place_id: id })
+    if (error && error.code !== '23505') {
       console.error('[global favorite add]', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }

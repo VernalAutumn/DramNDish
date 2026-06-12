@@ -78,11 +78,9 @@ function obsOptionsFor(
   if (hasHandfill) {
     opts.push({ key: 'cask_level', label: '핸드필 캐스크 잔량', bucket: true })
   }
-  if (type === 'bar') {
-    opts.push({ key: 'bottle_level', label: '보틀 잔량', bucket: true })
-  }
-  opts.push({ key: 'price', label: '가격', bucket: false })
-  opts.push({ key: 'stock', label: '재고', bucket: false })
+  // 보틀 잔량(bottle_level)은 입력받지 않는다 (2026-06-13 운영 결정 — 기존 데이터 표시는 유지).
+  // 가격·재고는 보틀에 관한 한 가지 정보라 하나로 합쳐 받는다 → obs_type='price'로 저장.
+  opts.push({ key: 'price', label: '가격·재고', bucket: false })
   if (type === 'distillery') {
     opts.push({ key: 'tour_info', label: '투어 정보', bucket: false })
   }
@@ -959,7 +957,7 @@ function ObservationForm({
         <input
           value={valueText}
           onChange={(e) => setValueText(e.target.value)}
-          placeholder={obsType === 'price' ? '예: 12000엔' : obsType === 'stock' ? '예: 재고 있음 / 품절' : '관찰 내용'}
+          placeholder={obsType === 'price' ? '예: 야마자키 12년 12,000엔 · 재고 있음' : '관찰 내용'}
           className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
         />
       )}
