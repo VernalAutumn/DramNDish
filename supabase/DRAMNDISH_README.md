@@ -24,6 +24,19 @@ Supabase SQL Editor에서 순서대로 실행:
 4. **Settings → API → "Exposed schemas"** 에 `global` 추가.
    - 이걸 빼먹으면 GRANT가 있어도 supabase-js가 schema not exposed 에러를 낸다.
 
+### 후기 작성 슬라이스 추가 적용 (2026-06-13)
+
+기존 프로젝트라면 아래를 추가로 실행:
+
+5. `migrations/20260613_0003_reviews_companion_bottle_photos.sql`
+   — reviews 방문맥락 컬럼(companion_type·party_size) + bottle_logs 사진배열·식당메뉴 context
+6. `migrations/20260613_0004_storage_bucket.sql`
+   — 사진 Storage 버킷 `global-photos`(공개 읽기) + 업로드/삭제 정책
+   - 경로 규약: `global/{auth.uid()}/{파일명}` — 본인 폴더에만 업로드 가능
+
+시드 재실행 시(`seed/dramndish_seed.sql`)는 멱등 — `source='seed'` 행을 먼저
+비우므로 중복 등록이 정리된다.
+
 ## 클라이언트 접근
 
 ```ts
