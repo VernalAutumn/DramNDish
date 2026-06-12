@@ -78,6 +78,24 @@ values
    'https://www.gordonandmacphail.com',
    '{}'::jsonb),
 
+  -- 테스트용 식당·바 (2026-06-13 사용자 요청 — 후기 상세 폼 확인용)
+  -- TODO: 좌표·주소 확인 후 보정 (근사값)
+  ('금룡라멘 도톤보리점', '金龍ラーメン 道頓堀店',
+   'restaurant', null, 'JP', '오사카',
+   '1-7-26 Dotonbori, Chuo-ku, Osaka', 34.6687, 135.5028,
+   'seed',
+   'https://www.google.com/maps/search/?api=1&query=Kinryu+Ramen+Dotonbori',
+   null,
+   '{}'::jsonb),
+
+  ('바 시몬', 'Bar Simon',
+   'bar', null, 'JP', '오사카',
+   'Kita-ku, Osaka',  34.6976, 135.4990,
+   'seed',
+   'https://www.google.com/maps/search/?api=1&query=Bar+Simon+Osaka',
+   null,
+   '{}'::jsonb),
+
   -- 증류소 (subkind=distillery)
   ('산토리 야마자키 증류소', 'サントリー山崎蒸溜所',
    'distillery', 'distillery', 'JP', '오사카',

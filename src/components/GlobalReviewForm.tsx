@@ -160,8 +160,8 @@ export default function GlobalReviewForm({
           photo_urls: reviewUrls,
           companion_type: companion,
           party_size: partySize ? Number(partySize) : null,
-          spend_amount: spend ? Number(spend) : null,
-          spend_currency: spend ? currency || null : null,
+          spend_amount: detailed && spend ? Number(spend) : null,
+          spend_currency: detailed && spend ? currency || null : null,
           favorite:
             detailed && good
               ? {
@@ -292,7 +292,7 @@ export default function GlobalReviewForm({
             onClick={() => setShowMore((v) => !v)}
             className="text-[11px] font-medium underline text-gray-500"
           >
-            {showMore ? '선택 입력 접기' : '자세히 (방문자·비용 — 선택)'}
+            {showMore ? '선택 입력 접기' : detailed ? '자세히 (방문자·비용 — 선택)' : '자세히 (함께 방문 — 선택)'}
           </button>
           {showMore && (
             <div className="space-y-3">
@@ -324,19 +324,24 @@ export default function GlobalReviewForm({
                   placeholder="인원"
                   className="w-20 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
                 />
-                <input
-                  value={spend}
-                  onChange={(e) => setSpend(e.target.value.replace(/[^0-9.]/g, ''))}
-                  inputMode="decimal"
-                  placeholder="소모 비용 (1인 기준)"
-                  className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                />
-                <input
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
-                  placeholder="통화"
-                  className="w-16 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-center"
-                />
+                {/* 소모 비용은 식당·바만 — 리쿼샵·증류소는 구매 인증으로 비용을 남기므로 미수집 */}
+                {detailed && (
+                  <>
+                    <input
+                      value={spend}
+                      onChange={(e) => setSpend(e.target.value.replace(/[^0-9.]/g, ''))}
+                      inputMode="decimal"
+                      placeholder="소모 비용 (1인 기준)"
+                      className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                    />
+                    <input
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
+                      placeholder="통화"
+                      className="w-16 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-center"
+                    />
+                  </>
+                )}
               </div>
             </div>
           )}
