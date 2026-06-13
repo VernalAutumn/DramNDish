@@ -96,7 +96,8 @@ export default function GlobalExplorer() {
   const [status, setStatus] = useState<Status>('loading')
   const [places, setPlaces] = useState<GlobalPlace[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [showMe, setShowMe] = useState(false) // 내 기록 오른쪽 플로팅 패널
+  const [showMe, setShowMe] = useState(false) // 모바일: 내 기록 풀스크린 토글
+  const [meCollapsed, setMeCollapsed] = useState(false) // 데스크탑: 우측 상시 표시(접기 가능)
 
   // /global?place={id} — 등록 직후·공유 링크로 상세 바로 열기
   useEffect(() => {
@@ -464,8 +465,12 @@ export default function GlobalExplorer() {
             >
               + 장소 등록
             </button>
+            {/* 데스크탑은 우측에 상시 표시 — 이 버튼은 모바일 토글 / 접었을 때 복원용 */}
             <button
-              onClick={() => setShowMe(true)}
+              onClick={() => {
+                setShowMe(true)
+                setMeCollapsed(false)
+              }}
               className="px-4 py-2.5 text-xs font-semibold rounded-lg border border-border-default text-gray-600"
             >
               내 기록
@@ -492,33 +497,41 @@ export default function GlobalExplorer() {
         </>
       )}
 
-      {/* ── 내 기록 — 화면 우측 끝 플로팅 (리스트=좌, 내 기록=우로 분리) ──── */}
-      {/* 상세 패널(리스트 옆)과 겹치지 않도록 반대편 정렬 — 상세를 가리지 않는다 */}
-      {showMe && (
-        <>
-          <div className="hidden md:flex absolute z-30 top-4 bottom-4 right-4 w-[380px]">
-            <div className="panel w-full h-full overflow-hidden md:rounded-2xl bg-white shadow-xl">
-              <GlobalMyRecords
-                onPlaceClick={(id) => {
-                  setShowMe(false)
-                  setSelectedId(id)
-                }}
-                onAddPlace={() => router.push('/global/add')}
-                onClose={() => setShowMe(false)}
-              />
-            </div>
-          </div>
-          <div className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white">
+      {/* ── 내 기록 — 데스크탑은 화면 우측 끝에 상시 표시 (리스트=좌, 내 기록=우) ──
+          국내판처럼 버튼 없이 기본 노출. 접기(×) 시 우측에 작은 복원 칩만 남는다.
+          상세 패널(리스트 옆 중앙)과 반대편이라 겹치지 않는다. */}
+      <div className={`hidden md:flex absolute z-30 top-4 bottom-4 right-4 ${meCollapsed ? 'items-start' : 'w-[380px]'}`}>
+        {meCollapsed ? (
+          <button
+            onClick={() => setMeCollapsed(false)}
+            className="bg-white rounded-xl px-3 py-2 text-xs font-bold shadow-xl"
+            style={{ color: 'var(--color-brand-primary)' }}
+          >
+            내 기록 펼치기
+          </button>
+        ) : (
+          <div className="panel w-full h-full overflow-hidden rounded-2xl bg-white shadow-xl">
             <GlobalMyRecords
-              onPlaceClick={(id) => {
-                setShowMe(false)
-                setSelectedId(id)
-              }}
+              onPlaceClick={(id) => setSelectedId(id)}
               onAddPlace={() => router.push('/global/add')}
-              onClose={() => setShowMe(false)}
+              onClose={() => setMeCollapsed(true)}
             />
           </div>
-        </>
+        )}
+      </div>
+
+      {/* 모바일: 풀스크린 토글 */}
+      {showMe && (
+        <div className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white">
+          <GlobalMyRecords
+            onPlaceClick={(id) => {
+              setShowMe(false)
+              setSelectedId(id)
+            }}
+            onAddPlace={() => router.push('/global/add')}
+            onClose={() => setShowMe(false)}
+          />
+        </div>
       )}
     </div>
   )
