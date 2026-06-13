@@ -720,7 +720,9 @@ export default function GlobalPlaceDetail({
           </>
         )}
 
-        {/* 관찰 데이터 (§8.4) + 입력 */}
+        {/* 관찰 데이터 (§8.4) + 입력 — 식당은 잔량·재고·투어 개념이 없어 제외 */}
+        {place.type !== 'restaurant' && (
+        <>
         <SectionTitle
           right={
             <button
@@ -796,6 +798,8 @@ export default function GlobalPlaceDetail({
               )
             })}
           </ul>
+        )}
+        </>
         )}
 
         {/* 5. 태그 (§8.2-5) — 1인 1표 투표 */}
