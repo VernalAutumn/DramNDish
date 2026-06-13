@@ -417,9 +417,6 @@ export default function GlobalPlaceDetail({
   const onsiteOfferings = attrs.onsite_offerings as
     | { name?: string; category?: string; note?: string }[]
     | undefined
-  const referencePrices = attrs.reference_prices as
-    | { product?: string; price?: number | string; currency?: string }[]
-    | undefined
 
   // 바 흡연·커버차지: 큐레이션 attributes 우선, 없으면 후기 집계(방문자 보고)로 보강 (§1)
   const smReports = reviews.filter((r) => r.bar_smoking !== null)
@@ -699,26 +696,8 @@ export default function GlobalPlaceDetail({
           </>
         )}
 
-        {/* liquor_shop: 기준 병가 */}
-        {place.type === 'liquor_shop' && (
-          <>
-            <SectionTitle>기준 병가</SectionTitle>
-            {!referencePrices || referencePrices.length === 0 ? (
-              <p className="text-xs text-gray-400">
-                관리자 등록 기준가 없음 — 다녀오셨다면 아래 관찰의 “재고”로 제품·가격을 남겨주세요.
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {referencePrices.map((rp, i) => (
-                  <li key={i} className="text-xs text-gray-700 flex justify-between">
-                    <span>{rp.product ?? '제품 미상'}</span>
-                    <span className="font-medium">{rp.price != null ? `${rp.price} ${rp.currency ?? ''}` : '가격 미상'}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
+        {/* 기준 병가(reference_prices) 제거: MSRP는 제품 속성이고 실거래 시세는
+            관찰로 채워지며 외부(위스키베이스)가 온라인 시세를 제공 — 장소별 큐레이션은 중복. */}
 
         {/* 관찰 데이터 (§8.4) + 입력 — 식당은 잔량·재고·투어 개념이 없어 제외 */}
         {place.type !== 'restaurant' && (
