@@ -1,18 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
 import { COMPANION_LABEL, defaultCurrency } from '@/src/lib/global'
 
-// 후기 작성 폼 (§8.3 + 사용자 설계 2026-06-13)
-//  - 리쿼샵·증류소: 국내판처럼 코멘트만 (간단 모드)
-//  - 식당·바: 팝업 상세 폼
-//      ★ 3단 (1성 별로 / 2성 무난 / 3성 최고)
-//      1성  → 코멘트 필수("아쉬웠던 점을 적어주세요"), 사진 선택
-//      2·3성 → 코멘트 필수 + 좋았던 메뉴(사진 1~2장 + 이름) 필수, 가격 입력
-//      선택: 방문자 타입(혼자/친구/연인/가족)·인원·소모 비용(현지 통화)
+// 동적 후기 폼 (사용자 설계 2026-06-13) — 장소 타입별 모듈 렌더.
+//  [공통 필수]  별점(1~3성) + 한줄평
+//  [바]        좋았던 한 잔(명/가격/사진) · 흡연 · 커버차지 · 동반 · 1인당 비용  (전부 선택)
+//  [음식점]     좋았던 메뉴(명/가격/사진) · 동반 · 1인당 비용                   (전부 선택)
+//  [리쿼샵/증류소] 구매 인증(바틀명/가격/사진), 증류소는 현장구매·시음 구분       (선택)
+// 강제 필수 제약 없음 — 사진·메뉴·가격은 모두 Optional.
 
 type Rating = 'meh' | 'fine' | 'revisit'
 
@@ -21,6 +20,11 @@ const STAR_OPTIONS: { key: Rating; stars: string; label: string }[] = [
   { key: 'fine', stars: '★★', label: '무난' },
   { key: 'revisit', stars: '★★★', label: '최고' },
 ]
+
+interface ProductHit {
+  id: string
+  display_name: string
+}
 
 export default function GlobalReviewForm({
   placeId,
@@ -37,92 +41,102 @@ export default function GlobalReviewForm({
   onClose: () => void
   onDone: () => void
 }) {
-  const detailed = placeType === 'restaurant' || placeType === 'bar'
-  const favoriteLabel = placeType === 'bar' ? '가장 좋았던 한 잔' : '가장 좋았던 메뉴'
+  const isBar = placeType === 'bar'
+  const isRestaurant = placeType === 'restaurant'
+  const isShop = placeType === 'liquor_shop' || placeType === 'distillery'
+  const showSpend = isBar || isRestaurant // 동반·비용 모듈
+
+  const bottleTitle = isBar
+    ? '가장 좋았던 한 잔'
+    : isRestaurant
+      ? '가장 좋았던 메뉴'
+      : '구매 인증'
 
   const [rating, setRating] = useState<Rating | null>(null)
   const [comment, setComment] = useState('')
   const [visitedAt, setVisitedAt] = useState(() => new Date().toISOString().slice(0, 10))
 
-  // 1성용 후기 사진 (선택)
-  const [reviewFiles, setReviewFiles] = useState<File[]>([])
-  // 2·3성용 좋았던 메뉴
-  const [favFiles, setFavFiles] = useState<File[]>([])
-  const [favName, setFavName] = useState('')
-  const [favPrice, setFavPrice] = useState('')
+  // 보틀 모듈 (선택)
+  const [bottleName, setBottleName] = useState('')
+  const [bottleProductId, setBottleProductId] = useState<string | null>(null)
+  const [bottlePrice, setBottlePrice] = useState('')
+  const [bottleFiles, setBottleFiles] = useState<File[]>([])
+  const [bottleContext, setBottleContext] = useState('distillery_direct') // 증류소만
+  const [hits, setHits] = useState<ProductHit[]>([])
 
-  // 선택 입력 (자세히)
+  // 분위기 사진 (선택, 보틀과 별개)
+  const [reviewFiles, setReviewFiles] = useState<File[]>([])
+
+  // 선택 입력
   const [showMore, setShowMore] = useState(false)
   const [companion, setCompanion] = useState<string | null>(null)
   const [partySize, setPartySize] = useState('')
   const [spend, setSpend] = useState('')
   const [currency, setCurrency] = useState(() => defaultCurrency(placeCountry))
-  // 바 전용: 흡연·커버차지 (방문 시 확인) — 'yes'|'no'|null
   const [barSmoking, setBarSmoking] = useState<'yes' | 'no' | null>(null)
   const [barCover, setBarCover] = useState<'yes' | 'no' | null>(null)
-  const isBar = placeType === 'bar'
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const good = rating === 'fine' || rating === 'revisit'
+  // 보틀명 자동완성 (§7) — 제품 선택 후엔 검색 안 함
+  useEffect(() => {
+    if (bottleProductId || bottleName.trim().length < 1) {
+      setHits([])
+      return
+    }
+    const t = setTimeout(() => {
+      fetch(`/api/global/products?q=${encodeURIComponent(bottleName.trim())}`)
+        .then((r) => r.json())
+        .then((j) => setHits(j.products ?? []))
+        .catch(() => setHits([]))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [bottleName, bottleProductId])
 
   const submit = async () => {
     setError(null)
-    if (detailed && !rating) {
+    // 공통 필수: 별점 + 한줄평. 그 외 전부 선택.
+    if (!rating) {
       setError('별점을 선택해주세요.')
       return
     }
     if (!comment.trim()) {
-      setError(detailed && rating === 'meh' ? '아쉬웠던 점을 적어주세요.' : '코멘트를 입력해주세요.')
+      setError(rating === 'meh' ? '아쉬웠던 점을 적어주세요.' : '한줄평을 입력해주세요.')
       return
-    }
-    if (detailed && good) {
-      if (!favName.trim()) {
-        setError(`${favoriteLabel} 이름을 입력해주세요.`)
-        return
-      }
-      if (favFiles.length === 0) {
-        setError(`${favoriteLabel} 사진을 1장 이상 올려주세요.`)
-        return
-      }
     }
 
     setBusy(true)
     try {
-      // 1) 사진 업로드 (Storage) → URL
-      const reviewUrls =
-        reviewFiles.length > 0 ? await uploadGlobalPhotos(reviewFiles, currentUser.id) : []
-      const favUrls =
-        detailed && good && favFiles.length > 0
-          ? await uploadGlobalPhotos(favFiles, currentUser.id)
-          : []
+      const reviewUrls = reviewFiles.length > 0 ? await uploadGlobalPhotos(reviewFiles, currentUser.id) : []
+      const bottleUrls = bottleFiles.length > 0 ? await uploadGlobalPhotos(bottleFiles, currentUser.id) : []
 
-      // 2) 후기 저장
+      const hasBottle = !!(bottleName.trim() || bottleProductId)
+
       const res = await fetch(`/api/global/places/${placeId}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           visited_at: visitedAt,
-          rating: detailed ? rating : null,
+          rating,
           comment: comment.trim(),
           photo_urls: reviewUrls,
-          companion_type: companion,
-          // 혼자면 인원 입력 칸을 숨기므로 전송 안 함(서버가 1로 처리)
-          party_size: companion === 'solo' ? null : partySize ? Number(partySize) : null,
-          spend_amount: detailed && spend ? Number(spend) : null,
-          spend_currency: detailed && spend ? currency || null : null,
+          companion_type: showSpend ? companion : null,
+          party_size: showSpend && companion !== 'solo' && partySize ? Number(partySize) : null,
+          spend_amount: showSpend && spend ? Number(spend) : null,
+          spend_currency: showSpend && spend ? currency || null : null,
           bar_smoking: isBar && barSmoking ? barSmoking === 'yes' : null,
           bar_cover_charge: isBar && barCover ? barCover === 'yes' : null,
-          favorite:
-            detailed && good
-              ? {
-                  name: favName.trim(),
-                  price: favPrice ? Number(favPrice) : undefined,
-                  currency: currency || undefined,
-                  photo_urls: favUrls,
-                }
-              : undefined,
+          bottle: hasBottle
+            ? {
+                name: bottleName.trim() || undefined,
+                product_id: bottleProductId || undefined,
+                price: bottlePrice || undefined,
+                currency: currency || undefined,
+                photo_urls: bottleUrls,
+                context: placeType === 'distillery' ? bottleContext : undefined,
+              }
+            : undefined,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -144,12 +158,9 @@ export default function GlobalReviewForm({
   }
 
   return (
-    // 바깥 클릭으로는 닫지 않는다 — 작성 중 데이터 소실 방지(6). 닫기는 X 버튼으로만.
+    // 바깥 클릭으로는 닫지 않는다 — 작성 중 데이터 소실 방지. 닫기는 X로만.
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/45">
-      <div
-        className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col"
-        style={{ maxHeight: '88vh' }}
-      >
+      <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col" style={{ maxHeight: '88vh' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <h3 className="text-sm font-bold text-gray-900">후기 쓰기</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1" aria-label="닫기">
@@ -170,168 +181,222 @@ export default function GlobalReviewForm({
             />
           </div>
 
-          {/* ★ 3단 (식당·바) */}
-          {detailed && (
-            <div className="flex gap-2">
-              {STAR_OPTIONS.map(({ key, stars, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setRating(key)}
-                  className="flex-1 py-2.5 rounded-xl border text-center"
-                  style={
-                    rating === key
-                      ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
-                      : { borderColor: '#e5e7eb' }
-                  }
-                >
-                  <span className="block text-sm" style={{ color: rating === key ? 'var(--color-brand-primary)' : '#9ca3af' }}>
-                    {stars}
-                  </span>
-                  <span className="block text-[11px] font-medium text-gray-700 mt-0.5">{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* [공통 필수] 별점 3단 */}
+          <div className="flex gap-2">
+            {STAR_OPTIONS.map(({ key, stars, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setRating(key)}
+                className="flex-1 py-2.5 rounded-xl border text-center"
+                style={
+                  rating === key
+                    ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
+                    : { borderColor: '#e5e7eb' }
+                }
+              >
+                <span className="block text-sm" style={{ color: rating === key ? 'var(--color-brand-primary)' : '#9ca3af' }}>
+                  {stars}
+                </span>
+                <span className="block text-[11px] font-medium text-gray-700 mt-0.5">{label}</span>
+              </button>
+            ))}
+          </div>
 
-          {/* 코멘트 */}
+          {/* [공통 필수] 한줄평 */}
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}
             maxLength={500}
-            placeholder={detailed && rating === 'meh' ? '아쉬웠던 점을 적어주세요' : '후기를 남겨주세요'}
+            placeholder={rating === 'meh' ? '아쉬웠던 점을 적어주세요' : '한줄평을 남겨주세요'}
             className="w-full text-xs border border-gray-200 rounded-lg p-2.5 resize-none"
           />
 
-          {/* 1성: 사진 선택 / 2·3성: 좋았던 메뉴 필수 */}
-          {detailed && rating === 'meh' && (
-            <PhotoPicker files={reviewFiles} setFiles={setReviewFiles} label="사진 첨부 (선택)" />
-          )}
-          {detailed && good && (
-            <div className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50">
-              <PhotoPicker files={favFiles} setFiles={setFavFiles} label={`${favoriteLabel}의 사진을 올려주세요!`} />
+          {/* 보틀 모듈 (유형별, 선택) */}
+          <div className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50">
+            <p className="text-xs font-bold text-gray-700">
+              {bottleTitle} <span className="text-gray-400 font-normal">(선택)</span>
+            </p>
+
+            {/* 증류소: 현장구매/시음 구분 */}
+            {placeType === 'distillery' && (
+              <div className="flex gap-2">
+                {(
+                  [
+                    { k: 'distillery_direct', l: '현장 구매' },
+                    { k: 'distillery_tasting', l: '시음' },
+                  ] as const
+                ).map(({ k, l }) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setBottleContext(k)}
+                    className="flex-1 py-1.5 text-[11px] font-medium rounded-lg border"
+                    style={
+                      bottleContext === k
+                        ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
+                        : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+                    }
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 이름 + 자동완성 */}
+            <div className="relative">
               <input
-                value={favName}
-                onChange={(e) => setFavName(e.target.value)}
-                placeholder={`${favoriteLabel} 이름 (필수)`}
+                value={bottleName}
+                onChange={(e) => {
+                  setBottleName(e.target.value)
+                  setBottleProductId(null)
+                }}
+                placeholder={isShop ? '바틀명 (예: 야마자키 12년, 닛프배)' : '메뉴/한 잔 이름'}
                 className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
               />
-              <div className="flex gap-2">
-                <input
-                  value={favPrice}
-                  onChange={(e) => setFavPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                  inputMode="decimal"
-                  placeholder="가격"
-                  className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                />
-                <input
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
-                  placeholder="통화"
-                  className="w-16 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-center"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 선택 입력 — Progressive Disclosure (§8.3) */}
-          <button
-            type="button"
-            onClick={() => setShowMore((v) => !v)}
-            className="text-[11px] font-medium underline text-gray-500"
-          >
-            {showMore ? '선택 입력 접기' : detailed ? '자세히 (방문자·비용 — 선택)' : '자세히 (함께 방문 — 선택)'}
-          </button>
-          {showMore && (
-            <div className="space-y-3">
-              <div>
-                <p className="text-[11px] text-gray-500 mb-1">함께 방문</p>
-                <div className="flex gap-1.5">
-                  {Object.entries(COMPANION_LABEL).map(([k, l]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setCompanion(companion === k ? null : k)}
-                      className="flex-1 text-[11px] font-medium py-1.5 rounded-lg border"
-                      style={
-                        companion === k
-                          ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
-                          : { borderColor: '#e5e7eb', color: '#6b7280' }
-                      }
-                    >
-                      {l}
-                    </button>
+              {bottleProductId && (
+                <p className="text-[10px] mt-1" style={{ color: 'var(--color-brand-primary)' }}>
+                  제품 DB와 연결됨 — 정식 명칭으로 저장됩니다.
+                </p>
+              )}
+              {hits.length > 0 && (
+                <ul className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  {hits.map((h) => (
+                    <li key={h.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBottleProductId(h.id)
+                          setBottleName(h.display_name)
+                          setHits([])
+                        }}
+                        className="w-full text-left text-xs px-3 py-2 hover:bg-gray-50"
+                      >
+                        {h.display_name}
+                      </button>
+                    </li>
                   ))}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {/* 혼자면 인원 칸을 숨긴다(2) — 의미 없는 1명 입력 방지 */}
-                {companion !== 'solo' && (
-                  <input
-                    value={partySize}
-                    onChange={(e) => setPartySize(e.target.value.replace(/[^0-9]/g, ''))}
-                    inputMode="numeric"
-                    placeholder="인원"
-                    className="w-20 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                  />
-                )}
-                {/* 소모 비용은 식당·바만 — 리쿼샵·증류소는 구매 인증으로 비용을 남기므로 미수집 */}
-                {detailed && (
-                  <>
-                    <input
-                      value={spend}
-                      onChange={(e) => setSpend(e.target.value.replace(/[^0-9.]/g, ''))}
-                      inputMode="decimal"
-                      placeholder="소모 비용 (1인 기준)"
-                      className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                    />
-                    <input
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
-                      placeholder="통화"
-                      className="w-16 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-center"
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* 바 전용(5): 흡연·커버차지 (방문 시 확인) */}
-              {isBar && (
-                <div className="space-y-2">
-                  {(
-                    [
-                      { key: 'smoking', label: '흡연', val: barSmoking, set: setBarSmoking, yes: '흡연 가능', no: '금연' },
-                      { key: 'cover', label: '커버차지', val: barCover, set: setBarCover, yes: '있었음', no: '없었음' },
-                    ] as const
-                  ).map((row) => (
-                    <div key={row.key} className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-500 w-14 flex-shrink-0">{row.label}</span>
-                      {(
-                        [
-                          { v: 'yes', l: row.yes },
-                          { v: 'no', l: row.no },
-                        ] as const
-                      ).map(({ v, l }) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => row.set(row.val === v ? null : v)}
-                          className="flex-1 text-[11px] font-medium py-1.5 rounded-lg border"
-                          style={
-                            row.val === v
-                              ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
-                              : { borderColor: '#e5e7eb', color: '#6b7280' }
-                          }
-                        >
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                </ul>
               )}
             </div>
+
+            {/* 가격 + 통화 */}
+            <div className="flex gap-2">
+              <input
+                value={bottlePrice}
+                onChange={(e) => setBottlePrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                inputMode="decimal"
+                placeholder="가격"
+                className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+              />
+              <input
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
+                placeholder="통화"
+                className="w-16 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-center"
+              />
+            </div>
+
+            <PhotoPicker files={bottleFiles} setFiles={setBottleFiles} label="사진 (선택)" />
+          </div>
+
+          {/* 분위기 사진 (선택) */}
+          <PhotoPicker files={reviewFiles} setFiles={setReviewFiles} label="매장·분위기 사진 (선택)" />
+
+          {/* 선택 입력 — 식당·바만 동반·비용 / 바만 흡연·커버 */}
+          {(showSpend || isBar) && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowMore((v) => !v)}
+                className="text-[11px] font-medium underline text-gray-500"
+              >
+                {showMore ? '선택 입력 접기' : '자세히 (방문자·비용 등 — 선택)'}
+              </button>
+              {showMore && (
+                <div className="space-y-3">
+                  {showSpend && (
+                    <>
+                      <div>
+                        <p className="text-[11px] text-gray-500 mb-1">함께 방문</p>
+                        <div className="flex gap-1.5">
+                          {Object.entries(COMPANION_LABEL).map(([k, l]) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => setCompanion(companion === k ? null : k)}
+                              className="flex-1 text-[11px] font-medium py-1.5 rounded-lg border"
+                              style={
+                                companion === k
+                                  ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
+                                  : { borderColor: '#e5e7eb', color: '#6b7280' }
+                              }
+                            >
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {companion !== 'solo' && (
+                          <input
+                            value={partySize}
+                            onChange={(e) => setPartySize(e.target.value.replace(/[^0-9]/g, ''))}
+                            inputMode="numeric"
+                            placeholder="인원"
+                            className="w-20 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                          />
+                        )}
+                        <input
+                          value={spend}
+                          onChange={(e) => setSpend(e.target.value.replace(/[^0-9.]/g, ''))}
+                          inputMode="decimal"
+                          placeholder="1인당 소모 비용"
+                          className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {isBar && (
+                    <div className="space-y-2">
+                      {(
+                        [
+                          { key: 'smoking', label: '흡연', val: barSmoking, set: setBarSmoking, yes: '흡연 가능', no: '금연' },
+                          { key: 'cover', label: '커버차지', val: barCover, set: setBarCover, yes: '있었음', no: '없었음' },
+                        ] as const
+                      ).map((row) => (
+                        <div key={row.key} className="flex items-center gap-2">
+                          <span className="text-[11px] text-gray-500 w-14 flex-shrink-0">{row.label}</span>
+                          {(
+                            [
+                              { v: 'yes', l: row.yes },
+                              { v: 'no', l: row.no },
+                            ] as const
+                          ).map(({ v, l }) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => row.set(row.val === v ? null : v)}
+                              className="flex-1 text-[11px] font-medium py-1.5 rounded-lg border"
+                              style={
+                                row.val === v
+                                  ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
+                                  : { borderColor: '#e5e7eb', color: '#6b7280' }
+                              }
+                            >
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {error && <p className="text-xs text-red-500">{error}</p>}

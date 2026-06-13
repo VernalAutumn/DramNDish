@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
-import GlobalPurchaseForm from './GlobalPurchaseForm'
 import PhotoLightbox from './PhotoLightbox'
 import {
   GlobalPlace,
@@ -110,9 +109,6 @@ export default function GlobalPlaceDetail({
   const [reportReason, setReportReason] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const [reportDone, setReportDone] = useState(false)
-
-  // 구매 인증 추가
-  const [showPurchaseForm, setShowPurchaseForm] = useState(false)
 
   // 사진 확대
   const [lightbox, setLightbox] = useState<string | null>(null)
@@ -279,17 +275,12 @@ export default function GlobalPlaceDetail({
   const rated = reviews.filter((r) => r.rating)
   const ratingCount = (k: string) => rated.filter((r) => r.rating === k).length
 
-  // 후기에 연결된 "좋았던 메뉴/한 잔" — 후기 카드 안에서 표시 (구글 리뷰식)
-  const favoriteLogOf = (reviewId: string) =>
-    bottleLogs.find(
-      (b) =>
-        b.review_id === reviewId &&
-        (b.context === 'bar_favorite' || b.context === 'restaurant_favorite')
-    )
-  // 구매 인증 섹션엔 후기 카드에 들어간 항목 제외
-  const purchaseLogs = bottleLogs.filter(
-    (b) => !(b.review_id && (b.context === 'bar_favorite' || b.context === 'restaurant_favorite'))
-  )
+  // 후기 카드에 연결된 보틀 기록 (모든 context — 좋았던 메뉴/한 잔 + 구매 인증)
+  const bottleLogOf = (reviewId: string) => bottleLogs.find((b) => b.review_id === reviewId)
+  // 구매 인증 섹션 = 리쿼샵·증류소 구매 기록 (review 연결 여부 무관 — §8.2-6, 사용자 3번).
+  //   바·식당의 좋았던 메뉴/한 잔은 후기 카드에만 표시하므로 여기서 제외.
+  const PURCHASE_CONTEXTS = ['shop_purchase', 'distillery_direct', 'distillery_tasting']
+  const purchaseLogs = bottleLogs.filter((b) => PURCHASE_CONTEXTS.includes(b.context))
 
   const onVote = async (review: GlobalReview, kind: 'helpful' | 'not_helpful') => {
     if (!currentUser) {
@@ -704,32 +695,14 @@ export default function GlobalPlaceDetail({
         <SectionTitle>태그</SectionTitle>
         <p className="text-xs text-gray-400">태그 기능 준비중</p>
 
-        {/* 6. 사진 / 구매 인증 (후기에 연결된 메뉴/한 잔은 후기 카드에 표시) */}
-        <SectionTitle
-          right={
-            place.type === 'liquor_shop' || place.type === 'distillery' ? (
-              <button
-                onClick={() => {
-                  if (!currentUser) {
-                    alert('로그인이 필요한 기능입니다.')
-                    return
-                  }
-                  setShowPurchaseForm(true)
-                }}
-                className="text-[11px] font-medium px-2 py-0.5 rounded-md border"
-                style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }}
-              >
-                + 인증 추가
-              </button>
-            ) : undefined
-          }
-        >
-          사진 / 구매 인증
-        </SectionTitle>
+        {/* 6. 구매 인증 — 리쿼샵·증류소만. 후기 작성 시 함께 남긴 보틀이 여기에도 노출(§8.2-6) */}
+        {(place.type === 'liquor_shop' || place.type === 'distillery') && (
+        <>
+        <SectionTitle>구매 인증</SectionTitle>
         {data.bottleLogsFailed ? (
           <p className="text-xs text-gray-400">구매 인증을 불러오지 못했습니다.</p>
         ) : purchaseLogs.length === 0 ? (
-          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. (등록 기능 준비중)</p>
+          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. 후기 작성 시 함께 남길 수 있습니다.</p>
         ) : (
           <ul className="space-y-2">
             {purchaseLogs.map((b) => (
@@ -763,6 +736,8 @@ export default function GlobalPlaceDetail({
             ))}
           </ul>
         )}
+        </>
+        )}
 
         {/* 7. 후기 — 구글 리뷰식 노출 (공유 없음, 좋아요 대신 유용해요/유용하지않아요) */}
         <SectionTitle
@@ -791,7 +766,7 @@ export default function GlobalPlaceDetail({
         ) : (
           <ul className="space-y-3">
             {reviews.map((r) => {
-              const fav = favoriteLogOf(r.id)
+              const fav = bottleLogOf(r.id)
               const photos = [...(r.photo_urls ?? []), ...(fav?.photo_urls ?? [])].slice(0, 4)
               const helpful = r.votes.filter((v) => v.vote === 'helpful').length
               const notHelpful = r.votes.filter((v) => v.vote === 'not_helpful').length
@@ -848,11 +823,11 @@ export default function GlobalPlaceDetail({
                     </div>
                   )}
 
-                  {/* 좋았던 메뉴/한 잔 */}
+                  {/* 연결된 보틀 — 좋았던 메뉴/한 잔 또는 구매 인증 (모든 context) */}
                   {fav && (
                     <p className="text-[11px] text-gray-600 mt-1.5">
                       <span className="font-medium" style={{ color: 'var(--color-brand-primary)' }}>
-                        {fav.context === 'bar_favorite' ? '가장 좋았던 한 잔' : '가장 좋았던 메뉴'}
+                        {BOTTLE_CONTEXT_LABEL[fav.context] ?? '보틀'}
                       </span>
                       {' · '}
                       {fav.product?.display_name ?? fav.free_label}
@@ -959,21 +934,6 @@ export default function GlobalPlaceDetail({
             )}
           </div>
         </div>
-      )}
-
-      {/* 구매 인증 모달 (리쿼샵·증류소) */}
-      {showPurchaseForm && currentUser && (place.type === 'liquor_shop' || place.type === 'distillery') && (
-        <GlobalPurchaseForm
-          placeId={placeId}
-          placeType={place.type}
-          placeCountry={place.country}
-          currentUser={currentUser}
-          onClose={() => setShowPurchaseForm(false)}
-          onDone={() => {
-            setShowPurchaseForm(false)
-            load()
-          }}
-        />
       )}
 
       {/* 사진 확대 */}
