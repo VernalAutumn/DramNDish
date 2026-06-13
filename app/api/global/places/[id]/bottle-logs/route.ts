@@ -18,15 +18,11 @@ export async function POST(
 
   const label: string = (body.label ?? '').trim()
   const productId: string | null = body.product_id || null
-  const context: string = (body.context ?? '').trim()
-  const loggedAt: string = (body.logged_at ?? '').trim()
-  const photoUrls: string[] = Array.isArray(body.photo_urls) ? body.photo_urls.slice(0, 2) : []
+  const loggedAt: string = (body.logged_at ?? '').trim() || new Date().toISOString().slice(0, 10)
+  const photoUrls: string[] = Array.isArray(body.photo_urls) ? body.photo_urls.slice(0, 5) : []
 
   if (!label && !productId) {
-    return NextResponse.json({ error: '보틀명을 입력해주세요.' }, { status: 400 })
-  }
-  if (!loggedAt) {
-    return NextResponse.json({ error: '날짜를 입력해주세요.' }, { status: 400 })
+    return NextResponse.json({ error: '제품명을 입력해주세요.' }, { status: 400 })
   }
 
   const client = await makeGlobalSSRClient()
@@ -35,7 +31,7 @@ export async function POST(
     return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
   }
 
-  // 장소 유형으로 context 검증
+  // 장소 유형으로 context 결정 (담백 인증 — 리쿼샵=구매, 증류소=현장구매 기본)
   const { data: place, error: placeErr } = await client
     .from('places')
     .select('type')
@@ -44,15 +40,10 @@ export async function POST(
   if (placeErr || !place) {
     return NextResponse.json({ error: '장소를 찾을 수 없습니다.' }, { status: 404 })
   }
-  const allowed =
-    place.type === 'liquor_shop'
-      ? ['shop_purchase']
-      : place.type === 'distillery'
-        ? ['distillery_direct', 'distillery_tasting']
-        : []
-  if (!allowed.includes(context)) {
-    return NextResponse.json({ error: '이 장소 유형에 맞지 않는 기록입니다.' }, { status: 400 })
+  if (place.type !== 'liquor_shop' && place.type !== 'distillery') {
+    return NextResponse.json({ error: '구매 인증은 리쿼샵·증류소에서만 가능합니다.' }, { status: 400 })
   }
+  const context = place.type === 'liquor_shop' ? 'shop_purchase' : 'distillery_direct'
 
   const { error } = await client.from('bottle_logs').insert({
     user_id: user.id,

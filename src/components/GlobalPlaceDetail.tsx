@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
+import GlobalPurchaseForm from './GlobalPurchaseForm'
 import PhotoLightbox from './PhotoLightbox'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
@@ -131,6 +132,9 @@ export default function GlobalPlaceDetail({
 
   // 후기 수정 (전체 재편집)
   const [editReview, setEditReview] = useState<GlobalReview | null>(null)
+
+  // 담백한 구매 인증
+  const [showPurchaseForm, setShowPurchaseForm] = useState(false)
 
   // 관찰 입력
   const [showObs, setShowObs] = useState(false)
@@ -893,11 +897,29 @@ export default function GlobalPlaceDetail({
         {/* 6. 구매 인증 — 리쿼샵·증류소만. 후기 작성 시 함께 남긴 보틀이 여기에도 노출(§8.2-6) */}
         {(place.type === 'liquor_shop' || place.type === 'distillery') && (
         <>
-        <SectionTitle>구매 인증</SectionTitle>
+        <SectionTitle
+          right={
+            <button
+              onClick={() => {
+                if (!currentUser) {
+                  alert('로그인이 필요한 기능입니다.')
+                  return
+                }
+                setShowPurchaseForm(true)
+              }}
+              className="text-[11px] font-medium px-2 py-0.5 rounded-md border"
+              style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }}
+            >
+              + 인증
+            </button>
+          }
+        >
+          구매 인증
+        </SectionTitle>
         {data.bottleLogsFailed ? (
           <p className="text-xs text-gray-400">구매 인증을 불러오지 못했습니다.</p>
         ) : purchaseLogs.length === 0 ? (
-          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. 후기 작성 시 함께 남길 수 있습니다.</p>
+          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. 위 “+ 인증”으로 제품·가격·사진만 빠르게 남기거나, 후기와 함께 남길 수 있습니다.</p>
         ) : (
           <ul className="space-y-2">
             {purchaseLogs.map((b) => (
@@ -1137,6 +1159,20 @@ export default function GlobalPlaceDetail({
             )}
           </div>
         </div>
+      )}
+
+      {/* 담백한 구매 인증 모달 (리쿼샵·증류소) */}
+      {showPurchaseForm && currentUser && (place.type === 'liquor_shop' || place.type === 'distillery') && (
+        <GlobalPurchaseForm
+          placeId={placeId}
+          placeCountry={place.country}
+          currentUser={currentUser}
+          onClose={() => setShowPurchaseForm(false)}
+          onDone={() => {
+            setShowPurchaseForm(false)
+            load()
+          }}
+        />
       )}
 
       {/* 사진 확대 */}
