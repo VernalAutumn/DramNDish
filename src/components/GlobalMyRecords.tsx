@@ -43,6 +43,12 @@ interface MyLog {
   product: { display_name: string } | null
   place: { id: string; name: string; type: string } | null
 }
+interface MyPhoto {
+  id: string
+  url: string
+  caption: string | null
+  place: { id: string; name: string; type: string } | null
+}
 
 type Status = 'loading' | 'unauth' | 'ready' | 'error'
 type Tab = 'places' | 'reviews' | 'photos' | 'bottles'
@@ -68,6 +74,7 @@ export default function GlobalMyRecords({
   const [places, setPlaces] = useState<MyPlace[]>([])
   const [reviews, setReviews] = useState<MyReview[]>([])
   const [logs, setLogs] = useState<MyLog[]>([])
+  const [photos, setPhotos] = useState<MyPhoto[]>([])
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [nickname, setNickname] = useState<string | null>(null)
   const [authed, setAuthed] = useState(false)
@@ -85,6 +92,7 @@ export default function GlobalMyRecords({
       setPlaces(json.places ?? [])
       setReviews(json.reviews ?? [])
       setLogs(json.bottleLogs ?? [])
+      setPhotos(json.photos ?? [])
       setStatus('ready')
     } catch {
       setStatus('error')
@@ -117,17 +125,20 @@ export default function GlobalMyRecords({
   }
 
   const allPhotos = useMemo(() => {
-    const out: { url: string; placeId: string | null; placeName: string }[] = []
+    const out: { url: string; placeId: string | null; placeName: string; caption: string | null }[] = []
+    // 독립 사진(설명 포함) 먼저
+    for (const p of photos)
+      out.push({ url: p.url, placeId: p.place?.id ?? null, placeName: p.place?.name ?? '장소 미상', caption: p.caption })
     for (const r of reviews)
       for (const u of r.photo_urls ?? [])
-        out.push({ url: u, placeId: r.place?.id ?? null, placeName: r.place?.name ?? '장소 미상' })
+        out.push({ url: u, placeId: r.place?.id ?? null, placeName: r.place?.name ?? '장소 미상', caption: null })
     for (const b of logs) {
       const ph = b.photo_urls?.length ? b.photo_urls : b.photo_url ? [b.photo_url] : []
       for (const u of ph)
-        out.push({ url: u, placeId: b.place?.id ?? null, placeName: b.place?.name ?? '장소 미상' })
+        out.push({ url: u, placeId: b.place?.id ?? null, placeName: b.place?.name ?? '장소 미상', caption: null })
     }
     return out
-  }, [reviews, logs])
+  }, [reviews, logs, photos])
 
   const bottlePurchases = useMemo(() => logs.filter((b) => PURCHASE_CONTEXTS.includes(b.context)), [logs])
 
@@ -335,7 +346,7 @@ export default function GlobalMyRecords({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={ph.url} alt="" className="w-full h-full object-cover rounded-lg" />
                       <span className="absolute bottom-0 inset-x-0 text-[9px] text-white bg-black/40 px-1 py-0.5 rounded-b-lg truncate">
-                        {ph.placeName}
+                        {ph.caption || ph.placeName}
                       </span>
                     </button>
                   ))}

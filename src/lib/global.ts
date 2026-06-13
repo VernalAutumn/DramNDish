@@ -52,6 +52,15 @@ export interface GlobalBottleLog {
   user: { nickname: string | null } | null
 }
 
+export interface GlobalPhoto {
+  id: string
+  user_id: string
+  url: string
+  caption: string | null
+  created_at: string
+  user: { nickname: string | null } | null
+}
+
 export interface GlobalObservation {
   id: string
   obs_type: string

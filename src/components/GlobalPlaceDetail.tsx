@@ -5,11 +5,14 @@ import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
 import PhotoLightbox from './PhotoLightbox'
+import PhotoPicker from './PhotoPicker'
+import { uploadGlobalPhotos } from '@/src/lib/global-upload'
 import {
   GlobalPlace,
   GlobalReview,
   GlobalBottleLog,
   GlobalObservation,
+  GlobalPhoto,
   GLOBAL_TYPE_LABEL,
   BOTTLE_CONTEXT_LABEL,
   OBS_TYPE_LABEL,
@@ -34,6 +37,8 @@ interface DetailData {
   bottleLogsFailed: boolean
   observations: GlobalObservation[]
   observationsFailed: boolean
+  photos: GlobalPhoto[]
+  photosFailed: boolean
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -112,6 +117,12 @@ export default function GlobalPlaceDetail({
 
   // 사진 확대
   const [lightbox, setLightbox] = useState<string | null>(null)
+
+  // 사진 업로드 (설명과 함께)
+  const [showPhotoForm, setShowPhotoForm] = useState(false)
+  const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [photoCaption, setPhotoCaption] = useState('')
+  const [photoBusy, setPhotoBusy] = useState(false)
 
   // 관찰 입력
   const [showObs, setShowObs] = useState(false)
@@ -238,6 +249,45 @@ export default function GlobalPlaceDetail({
       if (!confirm('이 구매 인증을 삭제할까요?')) return
       try {
         const res = await fetch(`/api/global/bottle-logs/${logId}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error()
+        await load()
+      } catch {
+        alert('삭제에 실패했습니다.')
+      }
+    },
+    [load]
+  )
+
+  const submitPhotos = useCallback(async () => {
+    if (!currentUser || photoFiles.length === 0 || photoBusy) return
+    setPhotoBusy(true)
+    try {
+      const urls = await uploadGlobalPhotos(photoFiles, currentUser.id)
+      // 여러 장이면 같은 설명으로 각각 등록
+      for (const url of urls) {
+        const res = await fetch(`/api/global/places/${placeId}/photos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, caption: photoCaption.trim() || null }),
+        })
+        if (!res.ok) throw new Error()
+      }
+      setPhotoFiles([])
+      setPhotoCaption('')
+      setShowPhotoForm(false)
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '사진 등록에 실패했습니다.')
+    } finally {
+      setPhotoBusy(false)
+    }
+  }, [currentUser, photoFiles, photoCaption, photoBusy, placeId, load])
+
+  const deletePhoto = useCallback(
+    async (photoId: string) => {
+      if (!confirm('이 사진을 삭제할까요?')) return
+      try {
+        const res = await fetch(`/api/global/photos/${photoId}`, { method: 'DELETE' })
         if (!res.ok) throw new Error()
         await load()
       } catch {
@@ -691,9 +741,76 @@ export default function GlobalPlaceDetail({
           </ul>
         )}
 
-        {/* 5. 태그 — global 스키마에 태그 테이블 미정(§5). 확정 후 구현. */}
-        <SectionTitle>태그</SectionTitle>
-        <p className="text-xs text-gray-400">태그 기능 준비중</p>
+        {/* 5. 사진 — 설명과 함께 올리는 독립 사진 (§8.5 사진 탭) */}
+        <SectionTitle
+          right={
+            <button
+              onClick={() => {
+                if (!currentUser) {
+                  alert('로그인이 필요한 기능입니다.')
+                  return
+                }
+                setShowPhotoForm((v) => !v)
+              }}
+              className="text-[11px] font-medium px-2 py-0.5 rounded-md border"
+              style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)' }}
+            >
+              {showPhotoForm ? '닫기' : '+ 사진'}
+            </button>
+          }
+        >
+          사진
+        </SectionTitle>
+
+        {showPhotoForm && (
+          <div className="border border-gray-200 rounded-lg p-3 mb-2 bg-gray-50 space-y-2">
+            <PhotoPicker files={photoFiles} setFiles={setPhotoFiles} label="사진 (최대 2장)" />
+            <input
+              value={photoCaption}
+              onChange={(e) => setPhotoCaption(e.target.value)}
+              maxLength={200}
+              placeholder="간단한 설명 (선택)"
+              className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+            />
+            <button
+              onClick={submitPhotos}
+              disabled={photoBusy || photoFiles.length === 0}
+              className="w-full py-2 text-xs font-bold rounded-lg text-white disabled:opacity-50"
+              style={{ background: 'var(--color-brand-primary)' }}
+            >
+              {photoBusy ? '올리는 중…' : '사진 올리기'}
+            </button>
+          </div>
+        )}
+
+        {data.photosFailed ? (
+          <p className="text-xs text-gray-400">사진을 불러오지 못했습니다.</p>
+        ) : data.photos.length === 0 ? (
+          <p className="text-xs text-gray-400">아직 사진이 없습니다.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-1.5">
+            {data.photos.map((p) => (
+              <div key={p.id} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt="" onClick={() => setLightbox(p.url)} className="w-full h-28 object-cover rounded-lg cursor-pointer" />
+                {p.caption && (
+                  <p className="absolute bottom-0 inset-x-0 text-[10px] text-white bg-black/45 px-1.5 py-0.5 rounded-b-lg truncate">
+                    {p.caption}
+                  </p>
+                )}
+                {currentUser?.id === p.user_id && (
+                  <button
+                    onClick={() => deletePhoto(p.id)}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] leading-none"
+                    aria-label="사진 삭제"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 6. 구매 인증 — 리쿼샵·증류소만. 후기 작성 시 함께 남긴 보틀이 여기에도 노출(§8.2-6) */}
         {(place.type === 'liquor_shop' || place.type === 'distillery') && (

@@ -15,7 +15,7 @@ export async function GET() {
     return NextResponse.json({ authenticated: false })
   }
 
-  const [placesRes, reviewsRes, logsRes] = await Promise.all([
+  const [placesRes, reviewsRes, logsRes, photosRes] = await Promise.all([
     client
       .from('places')
       .select('id, name, type, country, region, created_at')
@@ -35,11 +35,17 @@ export async function GET() {
       )
       .eq('user_id', user.id)
       .order('logged_at', { ascending: false }),
+    client
+      .from('photos')
+      .select('id, url, caption, created_at, place:places(id, name, type)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false }),
   ])
 
   if (placesRes.error) console.error('[global me] places', placesRes.error)
   if (reviewsRes.error) console.error('[global me] reviews', reviewsRes.error)
   if (logsRes.error) console.error('[global me] logs', logsRes.error)
+  if (photosRes.error) console.error('[global me] photos', photosRes.error)
 
   return NextResponse.json({
     authenticated: true,
@@ -49,5 +55,7 @@ export async function GET() {
     reviewsFailed: !!reviewsRes.error,
     bottleLogs: logsRes.data ?? [],
     bottleLogsFailed: !!logsRes.error,
+    photos: photosRes.data ?? [],
+    photosFailed: !!photosRes.error,
   })
 }

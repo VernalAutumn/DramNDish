@@ -14,7 +14,7 @@ export async function GET(
     const { id } = await params
     const supabase = createDramndishClient()
 
-    const [placeRes, reviewsRes, logsRes, obsRes] = await Promise.all([
+    const [placeRes, reviewsRes, logsRes, obsRes, photosRes] = await Promise.all([
       supabase
         .from('places')
         .select('*, contributor:users!places_contributed_by_fkey(nickname)')
@@ -41,6 +41,11 @@ export async function GET(
         )
         .eq('place_id', id)
         .order('observed_at', { ascending: false }),
+      supabase
+        .from('photos')
+        .select('id, user_id, url, caption, created_at, user:users!photos_user_id_fkey(nickname)')
+        .eq('place_id', id)
+        .order('created_at', { ascending: false }),
     ])
 
     // 관찰 작성자 닉네임 병합 (§8.4 출처 노출). 뷰는 FK 임베딩이 안 되므로 별도 조회.
@@ -75,6 +80,7 @@ export async function GET(
     if (reviewsRes.error) console.error('[api/global/places/[id]] reviews error:', reviewsRes.error)
     if (logsRes.error) console.error('[api/global/places/[id]] bottle_logs error:', logsRes.error)
     if (obsRes.error) console.error('[api/global/places/[id]] observations error:', obsRes.error)
+    if (photosRes.error) console.error('[api/global/places/[id]] photos error:', photosRes.error)
 
     return NextResponse.json({
       place: placeRes.data,
@@ -84,6 +90,8 @@ export async function GET(
       bottleLogsFailed: !!logsRes.error,
       observations,
       observationsFailed: !!obsRes.error,
+      photos: photosRes.data ?? [],
+      photosFailed: !!photosRes.error,
     })
   } catch (e) {
     console.error('[api/global/places/[id]] error:', e)
