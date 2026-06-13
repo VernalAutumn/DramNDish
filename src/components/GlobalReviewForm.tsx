@@ -57,6 +57,10 @@ export default function GlobalReviewForm({
   const [partySize, setPartySize] = useState('')
   const [spend, setSpend] = useState('')
   const [currency, setCurrency] = useState(() => defaultCurrency(placeCountry))
+  // 바 전용: 흡연·커버차지 (방문 시 확인) — 'yes'|'no'|null
+  const [barSmoking, setBarSmoking] = useState<'yes' | 'no' | null>(null)
+  const [barCover, setBarCover] = useState<'yes' | 'no' | null>(null)
+  const isBar = placeType === 'bar'
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -104,9 +108,12 @@ export default function GlobalReviewForm({
           comment: comment.trim(),
           photo_urls: reviewUrls,
           companion_type: companion,
-          party_size: partySize ? Number(partySize) : null,
+          // 혼자면 인원 입력 칸을 숨기므로 전송 안 함(서버가 1로 처리)
+          party_size: companion === 'solo' ? null : partySize ? Number(partySize) : null,
           spend_amount: detailed && spend ? Number(spend) : null,
           spend_currency: detailed && spend ? currency || null : null,
+          bar_smoking: isBar && barSmoking ? barSmoking === 'yes' : null,
+          bar_cover_charge: isBar && barCover ? barCover === 'yes' : null,
           favorite:
             detailed && good
               ? {
@@ -137,14 +144,11 @@ export default function GlobalReviewForm({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/45"
-      onClick={onClose}
-    >
+    // 바깥 클릭으로는 닫지 않는다 — 작성 중 데이터 소실 방지(6). 닫기는 X 버튼으로만.
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/45">
       <div
         className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col"
         style={{ maxHeight: '88vh' }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <h3 className="text-sm font-bold text-gray-900">후기 쓰기</h3>
@@ -262,13 +266,16 @@ export default function GlobalReviewForm({
                 </div>
               </div>
               <div className="flex gap-2">
-                <input
-                  value={partySize}
-                  onChange={(e) => setPartySize(e.target.value.replace(/[^0-9]/g, ''))}
-                  inputMode="numeric"
-                  placeholder="인원"
-                  className="w-20 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                />
+                {/* 혼자면 인원 칸을 숨긴다(2) — 의미 없는 1명 입력 방지 */}
+                {companion !== 'solo' && (
+                  <input
+                    value={partySize}
+                    onChange={(e) => setPartySize(e.target.value.replace(/[^0-9]/g, ''))}
+                    inputMode="numeric"
+                    placeholder="인원"
+                    className="w-20 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                  />
+                )}
                 {/* 소모 비용은 식당·바만 — 리쿼샵·증류소는 구매 인증으로 비용을 남기므로 미수집 */}
                 {detailed && (
                   <>
@@ -288,6 +295,42 @@ export default function GlobalReviewForm({
                   </>
                 )}
               </div>
+
+              {/* 바 전용(5): 흡연·커버차지 (방문 시 확인) */}
+              {isBar && (
+                <div className="space-y-2">
+                  {(
+                    [
+                      { key: 'smoking', label: '흡연', val: barSmoking, set: setBarSmoking, yes: '흡연 가능', no: '금연' },
+                      { key: 'cover', label: '커버차지', val: barCover, set: setBarCover, yes: '있었음', no: '없었음' },
+                    ] as const
+                  ).map((row) => (
+                    <div key={row.key} className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-500 w-14 flex-shrink-0">{row.label}</span>
+                      {(
+                        [
+                          { v: 'yes', l: row.yes },
+                          { v: 'no', l: row.no },
+                        ] as const
+                      ).map(({ v, l }) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => row.set(row.val === v ? null : v)}
+                          className="flex-1 text-[11px] font-medium py-1.5 rounded-lg border"
+                          style={
+                            row.val === v
+                              ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: '#fff' }
+                              : { borderColor: '#e5e7eb', color: '#6b7280' }
+                          }
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

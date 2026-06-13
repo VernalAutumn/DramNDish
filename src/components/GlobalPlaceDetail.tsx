@@ -532,7 +532,8 @@ export default function GlobalPlaceDetail({
               />
               <InfoRow label="운영 시즌" value={(attrs.season as string) ?? '정보 없음'} />
               <InfoRow label="핸드필" value={fmtBool(attrs.handfill, '있음', '없음')} />
-              <InfoRow label="보틀 구매 주의" value={(attrs.purchase_caution as string) ?? '정보 없음'} />
+              {/* 증류소 현장 구매 팁 — 예: "시내 리쿼샵이 더 쌈", "한정판은 여기서만" 등 */}
+              <InfoRow label="구매 팁" value={(attrs.purchase_caution as string) ?? '정보 없음'} />
             </>
           )}
         </div>
@@ -663,11 +664,13 @@ export default function GlobalPlaceDetail({
                     {o.value_bucket ? (VALUE_BUCKET_LABEL[o.value_bucket] ?? o.value_bucket) : o.value_text ?? '—'}
                     {o.note && <span className="text-gray-500"> · {o.note}</span>}
                   </p>
-                  <p className="text-[11px] mt-1 flex items-center gap-1.5">
+                  <p className="text-[11px] mt-1 flex items-center gap-1.5 flex-wrap">
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: freshnessColor(days) }} />
                     <span className="text-gray-500">
                       {o.observed_at} ({days === 0 ? '오늘' : `${days}일 전`})
                     </span>
+                    {/* 작성자 표기 (§8.4 출처 노출) */}
+                    <span className="text-gray-400">· {o.nickname ?? '익명'}</span>
                     {days >= 15 && <span className="text-red-500 font-medium">방문 전 확인 권장</span>}
                   </p>
                 </li>
@@ -787,8 +790,21 @@ export default function GlobalPlaceDetail({
                         <span className="text-gray-400">
                           {r.rating && ' · '}
                           {r.companion_type ? COMPANION_LABEL[r.companion_type] : ''}
-                          {r.party_size ? ` ${r.party_size}인` : ''}
+                          {/* 혼자면 인원(1) 숨김 — 중복 표기 방지 */}
+                          {r.companion_type !== 'solo' && r.party_size ? ` ${r.party_size}인` : ''}
                         </span>
+                      )}
+                    </p>
+                  )}
+
+                  {/* 바: 방문 시 흡연·커버차지 (후기 수집값) */}
+                  {(r.bar_smoking !== null || r.bar_cover_charge !== null) && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {r.bar_smoking !== null && (
+                        <span className="mr-2">흡연 {r.bar_smoking ? '가능' : '불가'}</span>
+                      )}
+                      {r.bar_cover_charge !== null && (
+                        <span>커버차지 {r.bar_cover_charge ? '있었음' : '없었음'}</span>
                       )}
                     </p>
                   )}

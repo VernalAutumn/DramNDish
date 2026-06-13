@@ -15,7 +15,12 @@ export async function GET() {
     return NextResponse.json({ authenticated: false })
   }
 
-  const [reviewsRes, logsRes] = await Promise.all([
+  const [placesRes, reviewsRes, logsRes] = await Promise.all([
+    client
+      .from('places')
+      .select('id, name, type, country, region, created_at')
+      .eq('contributed_by', user.id)
+      .order('created_at', { ascending: false }),
     client
       .from('reviews')
       .select(
@@ -32,11 +37,14 @@ export async function GET() {
       .order('logged_at', { ascending: false }),
   ])
 
+  if (placesRes.error) console.error('[global me] places', placesRes.error)
   if (reviewsRes.error) console.error('[global me] reviews', reviewsRes.error)
   if (logsRes.error) console.error('[global me] logs', logsRes.error)
 
   return NextResponse.json({
     authenticated: true,
+    places: placesRes.data ?? [],
+    placesFailed: !!placesRes.error,
     reviews: reviewsRes.data ?? [],
     reviewsFailed: !!reviewsRes.error,
     bottleLogs: logsRes.data ?? [],

@@ -93,11 +93,11 @@ export default function GlobalPurchaseForm({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/45" onClick={onClose}>
+    // 바깥 클릭으로는 닫지 않는다 — 작성 중 데이터 소실 방지(6). 닫기는 X 버튼으로만.
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/45">
       <div
         className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col"
         style={{ maxHeight: '88vh' }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <h3 className="text-sm font-bold text-gray-900">구매 인증</h3>

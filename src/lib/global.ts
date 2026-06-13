@@ -29,6 +29,8 @@ export interface GlobalReview {
   photo_urls: string[]
   companion_type: 'solo' | 'friends' | 'couple' | 'family' | null
   party_size: number | null
+  bar_smoking: boolean | null
+  bar_cover_charge: boolean | null
   created_at: string
   user: { nickname: string | null } | null
   votes: { vote: 'helpful' | 'not_helpful'; user_id: string }[]
@@ -58,6 +60,7 @@ export interface GlobalObservation {
   note: string | null
   observed_at: string
   verification_status: 'single' | 'confirmed'
+  nickname: string | null
 }
 
 export const GLOBAL_TYPE_LABEL: Record<string, string> = {

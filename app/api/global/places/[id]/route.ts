@@ -23,7 +23,7 @@ export async function GET(
       supabase
         .from('reviews')
         .select(
-          'id, user_id, rating, comment, visited_at, photo_urls, companion_type, party_size, created_at, user:users!reviews_user_id_fkey(nickname), votes:review_votes(vote, user_id)'
+          'id, user_id, rating, comment, visited_at, photo_urls, companion_type, party_size, bar_smoking, bar_cover_charge, created_at, user:users!reviews_user_id_fkey(nickname), votes:review_votes(vote, user_id)'
         )
         .eq('place_id', id)
         .order('created_at', { ascending: false }),
@@ -37,11 +37,25 @@ export async function GET(
       supabase
         .from('observations_with_status')
         .select(
-          'id, obs_type, value_bucket, value_text, note, observed_at, verification_status'
+          'id, user_id, obs_type, value_bucket, value_text, note, observed_at, verification_status'
         )
         .eq('place_id', id)
         .order('observed_at', { ascending: false }),
     ])
+
+    // 관찰 작성자 닉네임 병합 (§8.4 출처 노출). 뷰는 FK 임베딩이 안 되므로 별도 조회.
+    let observations = obsRes.data ?? []
+    if (observations.length > 0) {
+      const uids = [...new Set(observations.map((o) => o.user_id).filter(Boolean))]
+      if (uids.length > 0) {
+        const { data: us } = await supabase.from('users').select('id, nickname').in('id', uids)
+        const nameById = new Map((us ?? []).map((u) => [u.id, u.nickname]))
+        observations = observations.map((o) => ({
+          ...o,
+          nickname: nameById.get(o.user_id) ?? null,
+        }))
+      }
+    }
 
     if (placeRes.error) {
       if (placeRes.error.code === 'PGRST116') {
@@ -68,7 +82,7 @@ export async function GET(
       reviewsFailed: !!reviewsRes.error,
       bottleLogs: logsRes.data ?? [],
       bottleLogsFailed: !!logsRes.error,
-      observations: obsRes.data ?? [],
+      observations,
       observationsFailed: !!obsRes.error,
     })
   } catch (e) {

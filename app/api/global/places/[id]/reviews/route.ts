@@ -51,7 +51,12 @@ export async function POST(
   const spendAmount = body.spend_amount != null ? Number(body.spend_amount) : null
   const spendCurrency: string | null = body.spend_currency ? String(body.spend_currency).trim() : null
   const companionType: string | null = body.companion_type ?? null
-  const partySize = body.party_size != null ? Number(body.party_size) : null
+  // 혼자면 인원은 1로 고정 (입력 칸을 숨기므로)
+  const partySize =
+    companionType === 'solo' ? 1 : body.party_size != null ? Number(body.party_size) : null
+  // 바 후기 부가 정보 (방문 시 확인) — bool 또는 null
+  const barSmoking = typeof body.bar_smoking === 'boolean' ? body.bar_smoking : null
+  const barCover = typeof body.bar_cover_charge === 'boolean' ? body.bar_cover_charge : null
   const favorite = body.favorite as
     | { name?: string; price?: number; currency?: string; photo_urls?: string[] }
     | undefined
@@ -103,6 +108,8 @@ export async function POST(
       photo_urls: photoUrls,
       companion_type: companionType,
       party_size: partySize,
+      bar_smoking: type === 'bar' ? barSmoking : null,
+      bar_cover_charge: type === 'bar' ? barCover : null,
     })
     .select('id')
     .single()
