@@ -33,6 +33,10 @@ Supabase SQL Editor에서 순서대로 실행:
 6. `migrations/20260613_0004_storage_bucket.sql`
    — 사진 Storage 버킷 `global-photos`(공개 읽기) + 업로드/삭제 정책
    - 경로 규약: `global/{auth.uid()}/{파일명}` — 본인 폴더에만 업로드 가능
+7. `migrations/20260613_0005_review_bar_fields.sql` — 바 후기 흡연·커버차지 컬럼
+8. `migrations/20260613_0006_photos.sql` — 사진 테이블(설명 포함) + RLS·GRANT
+9. `migrations/20260613_0007_verification_window_14d.sql` — 관찰 검증 기간 14일
+10. `migrations/20260613_0008_tags.sql` — 장소 태그(place_tags·tag_votes, 1인 1표) + RLS·GRANT
 
 시드 재실행 시(`seed/dramndish_seed.sql`)는 멱등 — `source='seed'` 행을 먼저
 비우므로 중복 등록이 정리된다.

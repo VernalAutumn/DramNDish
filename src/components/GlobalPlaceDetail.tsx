@@ -124,6 +124,14 @@ export default function GlobalPlaceDetail({
   const [photoCaption, setPhotoCaption] = useState('')
   const [photoBusy, setPhotoBusy] = useState(false)
 
+  // 태그
+  const [tags, setTags] = useState<{ id: string; label: string; count: number; mine: boolean }[]>([])
+  const [newTag, setNewTag] = useState('')
+  const [tagBusy, setTagBusy] = useState(false)
+
+  // 후기 수정 (전체 재편집)
+  const [editReview, setEditReview] = useState<GlobalReview | null>(null)
+
   // 관찰 입력
   const [showObs, setShowObs] = useState(false)
   const [obsBusy, setObsBusy] = useState(false)
@@ -149,6 +157,53 @@ export default function GlobalPlaceDetail({
   useEffect(() => {
     load()
   }, [load])
+
+  // 태그 (투표 후 잦은 갱신이라 별도 조회)
+  const loadTags = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/global/places/${placeId}/tags`)
+      const json = await res.json()
+      setTags(json.tags ?? [])
+    } catch {
+      /* 태그는 부가 — 실패해도 무시 */
+    }
+  }, [placeId])
+
+  useEffect(() => {
+    loadTags()
+  }, [loadTags])
+
+  const voteTag = useCallback(
+    async (label: string) => {
+      if (!currentUser) {
+        alert('로그인이 필요한 기능입니다.')
+        return
+      }
+      if (tagBusy) return
+      setTagBusy(true)
+      try {
+        const res = await fetch(`/api/global/places/${placeId}/tags`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label }),
+        })
+        if (!res.ok) throw new Error()
+        await loadTags()
+      } catch {
+        alert('태그 처리에 실패했습니다.')
+      } finally {
+        setTagBusy(false)
+      }
+    },
+    [currentUser, tagBusy, placeId, loadTags]
+  )
+
+  const addTag = useCallback(async () => {
+    const label = newTag.trim()
+    if (!label) return
+    setNewTag('')
+    await voteTag(label)
+  }, [newTag, voteTag])
 
   // 로그인 상태 + 즐겨찾기 여부
   useEffect(() => {
@@ -649,7 +704,9 @@ export default function GlobalPlaceDetail({
           <>
             <SectionTitle>기준 병가</SectionTitle>
             {!referencePrices || referencePrices.length === 0 ? (
-              <p className="text-xs text-gray-400">가격 정보 없음 — 직접 등록해 주세요. (등록 기능 준비중)</p>
+              <p className="text-xs text-gray-400">
+                관리자 등록 기준가 없음 — 다녀오셨다면 아래 관찰의 “재고”로 제품·가격을 남겨주세요.
+              </p>
             ) : (
               <ul className="space-y-1">
                 {referencePrices.map((rp, i) => (
@@ -741,7 +798,45 @@ export default function GlobalPlaceDetail({
           </ul>
         )}
 
-        {/* 5. 사진 — 설명과 함께 올리는 독립 사진 (§8.5 사진 탭) */}
+        {/* 5. 태그 (§8.2-5) — 1인 1표 투표 */}
+        <SectionTitle>태그</SectionTitle>
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => voteTag(t.label)}
+              disabled={tagBusy}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full border disabled:opacity-60"
+              style={
+                t.mine
+                  ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
+                  : { borderColor: '#e5e7eb', color: '#6b7280' }
+              }
+            >
+              {t.label} {t.count}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-2">
+          <input
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addTag()}
+            maxLength={30}
+            placeholder="태그 추가 (예: 시음 가능, SMWS)"
+            className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+          />
+          <button
+            onClick={addTag}
+            disabled={tagBusy || !newTag.trim()}
+            className="px-3 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-50"
+            style={{ background: 'var(--color-brand-primary)' }}
+          >
+            추가
+          </button>
+        </div>
+
+        {/* 6. 사진 — 설명과 함께 올리는 독립 사진 (§8.5 사진 탭) */}
         <SectionTitle
           right={
             <button
@@ -979,12 +1074,20 @@ export default function GlobalPlaceDetail({
                       👎 유용하지 않아요{notHelpful > 0 && ` ${notHelpful}`}
                     </button>
                     {currentUser?.id === r.user_id ? (
-                      <button
-                        onClick={() => deleteReview(r.id)}
-                        className="ml-auto text-[11px] text-gray-400 hover:text-red-500 underline"
-                      >
-                        삭제
-                      </button>
+                      <span className="ml-auto flex gap-2">
+                        <button
+                          onClick={() => setEditReview(r)}
+                          className="text-[11px] text-gray-400 hover:text-gray-700 underline"
+                        >
+                          수정
+                        </button>
+                        <button
+                          onClick={() => deleteReview(r.id)}
+                          className="text-[11px] text-gray-400 hover:text-red-500 underline"
+                        >
+                          삭제
+                        </button>
+                      </span>
                     ) : (
                       <button
                         onClick={() => {
@@ -1056,7 +1159,7 @@ export default function GlobalPlaceDetail({
       {/* 사진 확대 */}
       {lightbox && <PhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}
 
-      {/* 후기 작성 모달 (식당·바 = 상세 폼 / 그 외 = 코멘트만) */}
+      {/* 후기 작성 모달 */}
       {showReviewForm && currentUser && (
         <GlobalReviewForm
           placeId={placeId}
@@ -1066,6 +1169,23 @@ export default function GlobalPlaceDetail({
           onClose={() => setShowReviewForm(false)}
           onDone={() => {
             setShowReviewForm(false)
+            load()
+          }}
+        />
+      )}
+
+      {/* 후기 수정 모달 (전체 재편집) */}
+      {editReview && currentUser && (
+        <GlobalReviewForm
+          placeId={placeId}
+          placeType={place.type}
+          placeCountry={place.country}
+          currentUser={currentUser}
+          editReview={editReview}
+          editBottle={bottleLogOf(editReview.id)}
+          onClose={() => setEditReview(null)}
+          onDone={() => {
+            setEditReview(null)
             load()
           }}
         />

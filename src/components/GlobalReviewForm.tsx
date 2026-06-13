@@ -4,14 +4,12 @@ import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
-import { COMPANION_LABEL, defaultCurrency } from '@/src/lib/global'
+import { COMPANION_LABEL, defaultCurrency, GlobalReview, GlobalBottleLog } from '@/src/lib/global'
 
-// 동적 후기 폼 (사용자 설계 2026-06-13) — 장소 타입별 모듈 렌더.
+// 동적 후기 폼 (작성·수정 공용).
 //  [공통 필수]  별점(1~3성) + 한줄평
-//  [바]        좋았던 한 잔(명/가격/사진) · 흡연 · 커버차지 · 동반 · 1인당 비용  (전부 선택)
-//  [음식점]     좋았던 메뉴(명/가격/사진) · 동반 · 1인당 비용                   (전부 선택)
-//  [리쿼샵/증류소] 구매 인증(바틀명/가격/사진), 증류소는 현장구매·시음 구분       (선택)
-// 강제 필수 제약 없음 — 사진·메뉴·가격은 모두 Optional.
+//  유형별 보틀 모듈·동반·비용·흡연/커버는 전부 선택.
+//  editReview 가 있으면 수정 모드(PATCH) — 기존 사진은 유지/삭제, 새 사진 추가.
 
 type Rating = 'meh' | 'fine' | 'revisit'
 
@@ -26,6 +24,29 @@ interface ProductHit {
   display_name: string
 }
 
+// 기존 사진 썸네일(유지/삭제)
+function ExistingPhotos({ urls, onRemove }: { urls: string[]; onRemove: (u: string) => void }) {
+  if (urls.length === 0) return null
+  return (
+    <div className="flex gap-2 flex-wrap">
+      {urls.map((u) => (
+        <div key={u} className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={u} alt="" className="w-16 h-16 object-cover rounded-lg" />
+          <button
+            type="button"
+            onClick={() => onRemove(u)}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-800 text-white text-[10px] leading-none"
+            aria-label="사진 제거"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function GlobalReviewForm({
   placeId,
   placeType,
@@ -33,6 +54,8 @@ export default function GlobalReviewForm({
   currentUser,
   onClose,
   onDone,
+  editReview,
+  editBottle,
 }: {
   placeId: string
   placeType: string
@@ -40,46 +63,54 @@ export default function GlobalReviewForm({
   currentUser: User
   onClose: () => void
   onDone: () => void
+  editReview?: GlobalReview
+  editBottle?: GlobalBottleLog
 }) {
+  const isEdit = !!editReview
   const isBar = placeType === 'bar'
   const isRestaurant = placeType === 'restaurant'
   const isShop = placeType === 'liquor_shop' || placeType === 'distillery'
-  const showSpend = isBar || isRestaurant // 동반·비용 모듈
+  const showSpend = isBar || isRestaurant
 
-  const bottleTitle = isBar
-    ? '가장 좋았던 한 잔'
-    : isRestaurant
-      ? '가장 좋았던 메뉴'
-      : '구매 인증'
+  const bottleTitle = isBar ? '가장 좋았던 한 잔' : isRestaurant ? '가장 좋았던 메뉴' : '구매 인증'
 
-  const [rating, setRating] = useState<Rating | null>(null)
-  const [comment, setComment] = useState('')
-  const [visitedAt, setVisitedAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [rating, setRating] = useState<Rating | null>((editReview?.rating as Rating) ?? null)
+  const [comment, setComment] = useState(editReview?.comment ?? '')
+  const [visitedAt, setVisitedAt] = useState(editReview?.visited_at ?? new Date().toISOString().slice(0, 10))
 
-  // 보틀 모듈 (선택)
-  const [bottleName, setBottleName] = useState('')
+  // 보틀 모듈
+  const [bottleName, setBottleName] = useState(editBottle?.free_label ?? editBottle?.product?.display_name ?? '')
   const [bottleProductId, setBottleProductId] = useState<string | null>(null)
-  const [bottlePrice, setBottlePrice] = useState('')
+  const [bottlePrice, setBottlePrice] = useState(editBottle?.price != null ? String(editBottle.price) : '')
   const [bottleFiles, setBottleFiles] = useState<File[]>([])
-  const [bottleContext, setBottleContext] = useState('distillery_direct') // 증류소만
+  const [existingBottlePhotos, setExistingBottlePhotos] = useState<string[]>(editBottle?.photo_urls ?? [])
+  const [bottleContext, setBottleContext] = useState(
+    editBottle?.context === 'distillery_tasting' ? 'distillery_tasting' : 'distillery_direct'
+  )
   const [hits, setHits] = useState<ProductHit[]>([])
 
-  // 분위기 사진 (선택, 보틀과 별개)
+  // 분위기 사진
   const [reviewFiles, setReviewFiles] = useState<File[]>([])
+  const [existingReviewPhotos, setExistingReviewPhotos] = useState<string[]>(editReview?.photo_urls ?? [])
 
   // 선택 입력
   const [showMore, setShowMore] = useState(false)
-  const [companion, setCompanion] = useState<string | null>(null)
-  const [partySize, setPartySize] = useState('')
+  const [companion, setCompanion] = useState<string | null>(editReview?.companion_type ?? null)
+  const [partySize, setPartySize] = useState(editReview?.party_size != null ? String(editReview.party_size) : '')
   const [spend, setSpend] = useState('')
-  const [currency, setCurrency] = useState(() => defaultCurrency(placeCountry))
-  const [barSmoking, setBarSmoking] = useState<'yes' | 'no' | null>(null)
-  const [barCover, setBarCover] = useState<'yes' | 'no' | null>(null)
+  const [currency, setCurrency] = useState(
+    editBottle?.currency ?? defaultCurrency(placeCountry)
+  )
+  const [barSmoking, setBarSmoking] = useState<'yes' | 'no' | null>(
+    editReview?.bar_smoking == null ? null : editReview.bar_smoking ? 'yes' : 'no'
+  )
+  const [barCover, setBarCover] = useState<'yes' | 'no' | null>(
+    editReview?.bar_cover_charge == null ? null : editReview.bar_cover_charge ? 'yes' : 'no'
+  )
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 보틀명 자동완성 (§7) — 제품 선택 후엔 검색 안 함
   useEffect(() => {
     if (bottleProductId || bottleName.trim().length < 1) {
       setHits([])
@@ -96,7 +127,6 @@ export default function GlobalReviewForm({
 
   const submit = async () => {
     setError(null)
-    // 공통 필수: 별점 + 한줄평. 그 외 전부 선택.
     if (!rating) {
       setError('별점을 선택해주세요.')
       return
@@ -108,68 +138,72 @@ export default function GlobalReviewForm({
 
     setBusy(true)
     try {
-      const reviewUrls = reviewFiles.length > 0 ? await uploadGlobalPhotos(reviewFiles, currentUser.id) : []
-      const bottleUrls = bottleFiles.length > 0 ? await uploadGlobalPhotos(bottleFiles, currentUser.id) : []
+      const newReviewUrls = reviewFiles.length > 0 ? await uploadGlobalPhotos(reviewFiles, currentUser.id) : []
+      const newBottleUrls = bottleFiles.length > 0 ? await uploadGlobalPhotos(bottleFiles, currentUser.id) : []
+      const reviewUrls = [...existingReviewPhotos, ...newReviewUrls].slice(0, 5)
+      const bottleUrls = [...existingBottlePhotos, ...newBottleUrls].slice(0, isShop ? 5 : 2)
 
       const hasBottle = !!(bottleName.trim() || bottleProductId)
+      const payload = {
+        visited_at: visitedAt,
+        rating,
+        comment: comment.trim(),
+        photo_urls: reviewUrls,
+        companion_type: showSpend ? companion : null,
+        party_size: showSpend && companion !== 'solo' && partySize ? Number(partySize) : null,
+        spend_amount: showSpend && spend ? Number(spend) : null,
+        spend_currency: showSpend && spend ? currency || null : null,
+        bar_smoking: isBar && barSmoking ? barSmoking === 'yes' : null,
+        bar_cover_charge: isBar && barCover ? barCover === 'yes' : null,
+        bottle: hasBottle
+          ? {
+              name: bottleName.trim() || undefined,
+              product_id: bottleProductId || undefined,
+              price: bottlePrice || undefined,
+              currency: currency || undefined,
+              photo_urls: bottleUrls,
+              context: placeType === 'distillery' ? bottleContext : undefined,
+            }
+          : undefined,
+      }
 
-      const res = await fetch(`/api/global/places/${placeId}/reviews`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          visited_at: visitedAt,
-          rating,
-          comment: comment.trim(),
-          photo_urls: reviewUrls,
-          companion_type: showSpend ? companion : null,
-          party_size: showSpend && companion !== 'solo' && partySize ? Number(partySize) : null,
-          spend_amount: showSpend && spend ? Number(spend) : null,
-          spend_currency: showSpend && spend ? currency || null : null,
-          bar_smoking: isBar && barSmoking ? barSmoking === 'yes' : null,
-          bar_cover_charge: isBar && barCover ? barCover === 'yes' : null,
-          bottle: hasBottle
-            ? {
-                name: bottleName.trim() || undefined,
-                product_id: bottleProductId || undefined,
-                price: bottlePrice || undefined,
-                currency: currency || undefined,
-                photo_urls: bottleUrls,
-                context: placeType === 'distillery' ? bottleContext : undefined,
-              }
-            : undefined,
-        }),
-      })
+      const res = await fetch(
+        isEdit ? `/api/global/reviews/${editReview!.id}` : `/api/global/places/${placeId}/reviews`,
+        {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      )
       const json = await res.json().catch(() => ({}))
       if (res.status === 401) {
         setError('로그인이 필요합니다.')
         return
       }
       if (!res.ok) {
-        setError(json.error ?? '후기 저장에 실패했습니다.')
+        setError(json.error ?? '저장에 실패했습니다.')
         return
       }
       if (json.warning) alert(json.warning)
       onDone()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '후기 저장에 실패했습니다.')
+      setError(e instanceof Error ? e.message : '저장에 실패했습니다.')
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    // 바깥 클릭으로는 닫지 않는다 — 작성 중 데이터 소실 방지. 닫기는 X로만.
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/45">
       <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col" style={{ maxHeight: '88vh' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <h3 className="text-sm font-bold text-gray-900">후기 쓰기</h3>
+          <h3 className="text-sm font-bold text-gray-900">{isEdit ? '후기 수정' : '후기 쓰기'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1" aria-label="닫기">
             ×
           </button>
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-4">
-          {/* 방문일 */}
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500 flex-shrink-0">방문일</label>
             <input
@@ -181,7 +215,6 @@ export default function GlobalReviewForm({
             />
           </div>
 
-          {/* [공통 필수] 별점 3단 */}
           <div className="flex gap-2">
             {STAR_OPTIONS.map(({ key, stars, label }) => (
               <button
@@ -203,7 +236,6 @@ export default function GlobalReviewForm({
             ))}
           </div>
 
-          {/* [공통 필수] 한줄평 */}
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -213,13 +245,12 @@ export default function GlobalReviewForm({
             className="w-full text-xs border border-gray-200 rounded-lg p-2.5 resize-none"
           />
 
-          {/* 보틀 모듈 (유형별, 선택) */}
+          {/* 보틀 모듈 */}
           <div className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50">
             <p className="text-xs font-bold text-gray-700">
               {bottleTitle} <span className="text-gray-400 font-normal">(선택)</span>
             </p>
 
-            {/* 증류소: 현장구매/시음 구분 */}
             {placeType === 'distillery' && (
               <div className="flex gap-2">
                 {(
@@ -245,7 +276,6 @@ export default function GlobalReviewForm({
               </div>
             )}
 
-            {/* 이름 + 자동완성 */}
             <div className="relative">
               <input
                 value={bottleName}
@@ -282,7 +312,6 @@ export default function GlobalReviewForm({
               )}
             </div>
 
-            {/* 가격 + 통화 */}
             <div className="flex gap-2">
               <input
                 value={bottlePrice}
@@ -299,21 +328,17 @@ export default function GlobalReviewForm({
               />
             </div>
 
-            {/* 좋았던 메뉴/한 잔은 2장, 구매 인증은 5장 */}
+            <ExistingPhotos urls={existingBottlePhotos} onRemove={(u) => setExistingBottlePhotos((p) => p.filter((x) => x !== u))} />
             <PhotoPicker files={bottleFiles} setFiles={setBottleFiles} label="사진 (선택)" max={isShop ? 5 : 2} />
           </div>
 
-          {/* 분위기 사진 (선택) — 최대 5장 */}
+          {/* 분위기 사진 */}
+          <ExistingPhotos urls={existingReviewPhotos} onRemove={(u) => setExistingReviewPhotos((p) => p.filter((x) => x !== u))} />
           <PhotoPicker files={reviewFiles} setFiles={setReviewFiles} label="매장·분위기 사진 (선택)" max={5} />
 
-          {/* 선택 입력 — 식당·바만 동반·비용 / 바만 흡연·커버 */}
           {(showSpend || isBar) && (
             <>
-              <button
-                type="button"
-                onClick={() => setShowMore((v) => !v)}
-                className="text-[11px] font-medium underline text-gray-500"
-              >
+              <button type="button" onClick={() => setShowMore((v) => !v)} className="text-[11px] font-medium underline text-gray-500">
                 {showMore ? '선택 입력 접기' : '자세히 (방문자·비용 등 — 선택)'}
               </button>
               {showMore && (
@@ -413,7 +438,7 @@ export default function GlobalReviewForm({
             className="flex-1 py-2.5 text-xs font-bold rounded-lg text-white disabled:opacity-50"
             style={{ background: 'var(--color-brand-primary)' }}
           >
-            {busy ? '저장 중…' : '후기 등록'}
+            {busy ? '저장 중…' : isEdit ? '수정 완료' : '후기 등록'}
           </button>
         </div>
       </div>
