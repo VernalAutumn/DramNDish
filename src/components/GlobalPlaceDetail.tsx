@@ -919,7 +919,7 @@ export default function GlobalPlaceDetail({
         {data.bottleLogsFailed ? (
           <p className="text-xs text-gray-400">구매 인증을 불러오지 못했습니다.</p>
         ) : purchaseLogs.length === 0 ? (
-          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다. 위 “+ 인증”으로 제품·가격·사진만 빠르게 남기거나, 후기와 함께 남길 수 있습니다.</p>
+          <p className="text-xs text-gray-400">구매 인증이 아직 없습니다.</p>
         ) : (
           <ul className="space-y-2">
             {purchaseLogs.map((b) => (
