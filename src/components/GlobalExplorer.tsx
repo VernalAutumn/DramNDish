@@ -465,10 +465,7 @@ export default function GlobalExplorer() {
               + 장소 등록
             </button>
             <button
-              onClick={() => {
-                setSelectedId(null)
-                setShowMe(true)
-              }}
+              onClick={() => setShowMe(true)}
               className="px-4 py-2.5 text-xs font-semibold rounded-lg border border-border-default text-gray-600"
             >
               내 기록
@@ -495,11 +492,12 @@ export default function GlobalExplorer() {
         </>
       )}
 
-      {/* ── 내 기록 — 리스트 오른쪽 플로팅 패널 (상세와 같은 자리) ───────── */}
+      {/* ── 내 기록 — 화면 우측 끝 플로팅 (리스트=좌, 내 기록=우로 분리) ──── */}
+      {/* 상세 패널(리스트 옆)과 겹치지 않도록 반대편 정렬 — 상세를 가리지 않는다 */}
       {showMe && (
         <>
-          <div className="hidden md:flex absolute z-20 top-4 bottom-4 left-[calc(1rem+360px+0.75rem)] w-[400px]">
-            <div className="panel w-full h-full overflow-hidden md:rounded-2xl bg-white">
+          <div className="hidden md:flex absolute z-30 top-4 bottom-4 right-4 w-[380px]">
+            <div className="panel w-full h-full overflow-hidden md:rounded-2xl bg-white shadow-xl">
               <GlobalMyRecords
                 onPlaceClick={(id) => {
                   setShowMe(false)

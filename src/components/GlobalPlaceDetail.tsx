@@ -325,6 +325,22 @@ export default function GlobalPlaceDetail({
     | { product?: string; price?: number | string; currency?: string }[]
     | undefined
 
+  // 바 흡연·커버차지: 큐레이션 attributes 우선, 없으면 후기 집계(방문자 보고)로 보강 (§1)
+  const smReports = reviews.filter((r) => r.bar_smoking !== null)
+  const cvReports = reviews.filter((r) => r.bar_cover_charge !== null)
+  const barSmokingValue: React.ReactNode =
+    attrs.smoking !== undefined
+      ? fmtBool(attrs.smoking, '흡연 가능', '금연')
+      : smReports.length > 0
+        ? `후기 ${smReports.length}건 중 흡연 가능 ${smReports.filter((r) => r.bar_smoking).length}건`
+        : '정보 없음'
+  const barCoverValue: React.ReactNode =
+    attrs.cover_charge != null
+      ? String(attrs.cover_charge)
+      : cvReports.length > 0
+        ? `후기 ${cvReports.length}건 중 있었음 ${cvReports.filter((r) => r.bar_cover_charge).length}건`
+        : '정보 없음'
+
   return (
     <div className="h-full flex flex-col">
       {/* 헤더: 1. 명칭 + 분류 */}
@@ -468,8 +484,9 @@ export default function GlobalPlaceDetail({
           )}
           {place.type === 'bar' && (
             <>
-              <InfoRow label="커버차지" value={attrs.cover_charge != null ? String(attrs.cover_charge) : '정보 없음'} />
-              <InfoRow label="흡연" value={fmtBool(attrs.smoking, '흡연 가능', '금연')} />
+              {/* 흡연·커버차지: 큐레이션 값이 있으면 그것, 없으면 후기 집계(방문자 보고)를 표시 */}
+              <InfoRow label="흡연" value={barSmokingValue} />
+              <InfoRow label="커버차지" value={barCoverValue} />
               <InfoRow label="전문 주종" value={(attrs.specialty as string) ?? '정보 없음'} />
               <InfoRow
                 label="제휴"
@@ -480,26 +497,6 @@ export default function GlobalPlaceDetail({
                 }
               />
               <InfoRow label="영업시간" value={(attrs.hours as string) ?? '정보 없음'} />
-              {/* 후기에서 모인 흡연·커버차지 (방문자 보고 집계) — §1 데이터 정직성 */}
-              {(() => {
-                const sm = reviews.filter((r) => r.bar_smoking !== null)
-                const cv = reviews.filter((r) => r.bar_cover_charge !== null)
-                if (sm.length === 0 && cv.length === 0) return null
-                return (
-                  <div className="py-1.5 text-[11px] text-gray-500">
-                    {sm.length > 0 && (
-                      <p>
-                        후기 {sm.length}건 중 흡연 가능 {sm.filter((r) => r.bar_smoking).length}건
-                      </p>
-                    )}
-                    {cv.length > 0 && (
-                      <p>
-                        후기 {cv.length}건 중 커버차지 있음 {cv.filter((r) => r.bar_cover_charge).length}건
-                      </p>
-                    )}
-                  </div>
-                )
-              })()}
             </>
           )}
           {place.type === 'restaurant' && (
