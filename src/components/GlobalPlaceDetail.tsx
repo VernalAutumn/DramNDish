@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
 import GlobalPurchaseForm from './GlobalPurchaseForm'
+import PhotoLightbox from './PhotoLightbox'
 import {
   GlobalPlace,
   GlobalReview,
@@ -112,6 +113,9 @@ export default function GlobalPlaceDetail({
 
   // 구매 인증 추가
   const [showPurchaseForm, setShowPurchaseForm] = useState(false)
+
+  // 사진 확대
+  const [lightbox, setLightbox] = useState<string | null>(null)
 
   // 관찰 입력
   const [showObs, setShowObs] = useState(false)
@@ -476,6 +480,26 @@ export default function GlobalPlaceDetail({
                 }
               />
               <InfoRow label="영업시간" value={(attrs.hours as string) ?? '정보 없음'} />
+              {/* 후기에서 모인 흡연·커버차지 (방문자 보고 집계) — §1 데이터 정직성 */}
+              {(() => {
+                const sm = reviews.filter((r) => r.bar_smoking !== null)
+                const cv = reviews.filter((r) => r.bar_cover_charge !== null)
+                if (sm.length === 0 && cv.length === 0) return null
+                return (
+                  <div className="py-1.5 text-[11px] text-gray-500">
+                    {sm.length > 0 && (
+                      <p>
+                        후기 {sm.length}건 중 흡연 가능 {sm.filter((r) => r.bar_smoking).length}건
+                      </p>
+                    )}
+                    {cv.length > 0 && (
+                      <p>
+                        후기 {cv.length}건 중 커버차지 있음 {cv.filter((r) => r.bar_cover_charge).length}건
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </>
           )}
           {place.type === 'restaurant' && (
@@ -715,7 +739,12 @@ export default function GlobalPlaceDetail({
               <li key={b.id} className="border border-gray-100 rounded-lg px-3 py-2">
                 {(b.photo_urls?.[0] ?? b.photo_url) && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={b.photo_urls?.[0] ?? b.photo_url!} alt="" className="w-full max-h-44 object-cover rounded-md mb-2" />
+                  <img
+                    src={b.photo_urls?.[0] ?? b.photo_url!}
+                    alt=""
+                    onClick={() => setLightbox(b.photo_urls?.[0] ?? b.photo_url!)}
+                    className="w-full max-h-44 object-cover rounded-md mb-2 cursor-pointer"
+                  />
                 )}
                 <p className="text-xs font-bold text-gray-800">{b.product?.display_name ?? b.free_label ?? '보틀명 미상'}</p>
                 <p className="text-[11px] text-gray-500 mt-0.5">
@@ -817,7 +846,7 @@ export default function GlobalPlaceDetail({
                     <div className={`grid gap-1.5 mt-2 ${photos.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                       {photos.map((url, i) => (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img key={i} src={url} alt="" className="w-full h-28 object-cover rounded-lg" />
+                        <img key={i} src={url} alt="" onClick={() => setLightbox(url)} className="w-full h-28 object-cover rounded-lg cursor-pointer" />
                       ))}
                     </div>
                   )}
@@ -949,6 +978,9 @@ export default function GlobalPlaceDetail({
           }}
         />
       )}
+
+      {/* 사진 확대 */}
+      {lightbox && <PhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}
 
       {/* 후기 작성 모달 (식당·바 = 상세 폼 / 그 외 = 코멘트만) */}
       {showReviewForm && currentUser && (

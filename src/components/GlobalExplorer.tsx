@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import GlobalPlaceDetail from './GlobalPlaceDetail'
+import GlobalMyRecords from './GlobalMyRecords'
 import { GlobalPlace, GLOBAL_TYPE_LABEL, countryLabel } from '@/src/lib/global'
 
 // dramndish Global(해외) 탐색 화면 — §8.1 구조 (국내 NaverMap 방식 참고).
@@ -95,6 +96,7 @@ export default function GlobalExplorer() {
   const [status, setStatus] = useState<Status>('loading')
   const [places, setPlaces] = useState<GlobalPlace[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showMe, setShowMe] = useState(false) // 내 기록 오른쪽 플로팅 패널
 
   // /global?place={id} — 등록 직후·공유 링크로 상세 바로 열기
   useEffect(() => {
@@ -454,17 +456,20 @@ export default function GlobalExplorer() {
           </div>
 
           {/* 패널 푸터: 장소 등록(§8.6) · 내 기록(§8.5) */}
-          <div className="flex border-t border-border-default flex-shrink-0 bg-white">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border-default flex-shrink-0 bg-white">
             <button
               onClick={() => router.push('/global/add')}
-              className="flex-1 py-2.5 text-xs font-bold"
-              style={{ color: 'var(--color-brand-primary)' }}
+              className="flex-1 py-2.5 text-xs font-bold rounded-lg text-white"
+              style={{ background: 'var(--color-brand-primary)' }}
             >
               + 장소 등록
             </button>
             <button
-              onClick={() => router.push('/global/me')}
-              className="flex-1 py-2.5 text-xs font-semibold text-gray-600 border-l border-border-default"
+              onClick={() => {
+                setSelectedId(null)
+                setShowMe(true)
+              }}
+              className="px-4 py-2.5 text-xs font-semibold rounded-lg border border-border-default text-gray-600"
             >
               내 기록
             </button>
@@ -486,6 +491,34 @@ export default function GlobalExplorer() {
             className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white"
           >
             <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
+          </div>
+        </>
+      )}
+
+      {/* ── 내 기록 — 리스트 오른쪽 플로팅 패널 (상세와 같은 자리) ───────── */}
+      {showMe && (
+        <>
+          <div className="hidden md:flex absolute z-20 top-4 bottom-4 left-[calc(1rem+360px+0.75rem)] w-[400px]">
+            <div className="panel w-full h-full overflow-hidden md:rounded-2xl bg-white">
+              <GlobalMyRecords
+                onPlaceClick={(id) => {
+                  setShowMe(false)
+                  setSelectedId(id)
+                }}
+                onAddPlace={() => router.push('/global/add')}
+                onClose={() => setShowMe(false)}
+              />
+            </div>
+          </div>
+          <div className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white">
+            <GlobalMyRecords
+              onPlaceClick={(id) => {
+                setShowMe(false)
+                setSelectedId(id)
+              }}
+              onAddPlace={() => router.push('/global/add')}
+              onClose={() => setShowMe(false)}
+            />
           </div>
         </>
       )}
