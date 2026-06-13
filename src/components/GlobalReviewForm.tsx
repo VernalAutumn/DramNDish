@@ -299,11 +299,12 @@ export default function GlobalReviewForm({
               />
             </div>
 
-            <PhotoPicker files={bottleFiles} setFiles={setBottleFiles} label="사진 (선택)" />
+            {/* 좋았던 메뉴/한 잔은 2장, 구매 인증은 5장 */}
+            <PhotoPicker files={bottleFiles} setFiles={setBottleFiles} label="사진 (선택)" max={isShop ? 5 : 2} />
           </div>
 
-          {/* 분위기 사진 (선택) */}
-          <PhotoPicker files={reviewFiles} setFiles={setReviewFiles} label="매장·분위기 사진 (선택)" />
+          {/* 분위기 사진 (선택) — 최대 5장 */}
+          <PhotoPicker files={reviewFiles} setFiles={setReviewFiles} label="매장·분위기 사진 (선택)" max={5} />
 
           {/* 선택 입력 — 식당·바만 동반·비용 / 바만 흡연·커버 */}
           {(showSpend || isBar) && (

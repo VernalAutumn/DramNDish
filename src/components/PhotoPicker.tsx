@@ -2,15 +2,17 @@
 
 import { useRef } from 'react'
 
-// 사진 1~2장 첨부 공용 컴포넌트 (후기 폼·구매 인증 폼에서 사용)
+// 사진 첨부 공용 컴포넌트. max로 장수 제한 (기본 5, 좋았던 메뉴는 2).
 export default function PhotoPicker({
   files,
   setFiles,
   label,
+  max = 5,
 }: {
   files: File[]
   setFiles: (f: File[]) => void
   label: string
+  max?: number
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   return (
@@ -22,7 +24,7 @@ export default function PhotoPicker({
           onClick={() => inputRef.current?.click()}
           className="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-gray-300 text-gray-700 flex-shrink-0"
         >
-          📷 사진 첨부 ({files.length}/2)
+          📷 사진 첨부 ({files.length}/{max})
         </button>
       </div>
       <input
@@ -33,7 +35,7 @@ export default function PhotoPicker({
         className="hidden"
         onChange={(e) => {
           const picked = Array.from(e.target.files ?? [])
-          setFiles([...files, ...picked].slice(0, 2))
+          setFiles([...files, ...picked].slice(0, max))
           e.target.value = ''
         }}
       />

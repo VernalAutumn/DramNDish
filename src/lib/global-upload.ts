@@ -6,7 +6,7 @@ import { createClient } from '@/src/lib/supabase-browser'
 // 업로드 후 공개 URL(텍스트)만 reviews/bottle_logs 컬럼에 저장한다.
 
 const BUCKET = 'global-photos'
-const MAX_PHOTOS = 2
+const MAX_PHOTOS = 5
 const MAX_SIZE_MB = 8
 
 export async function uploadGlobalPhotos(files: File[], uid: string): Promise<string[]> {

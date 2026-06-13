@@ -48,7 +48,7 @@ export async function POST(
   const rating: string | null = body.rating ?? null
   const comment: string = (body.comment ?? '').trim()
   const visited_at: string = (body.visited_at ?? '').trim()
-  const photoUrls: string[] = Array.isArray(body.photo_urls) ? body.photo_urls.slice(0, 2) : []
+  const photoUrls: string[] = Array.isArray(body.photo_urls) ? body.photo_urls.slice(0, 5) : []
   const spendAmount = body.spend_amount != null && body.spend_amount !== '' ? Number(body.spend_amount) : null
   const spendCurrency: string | null = body.spend_currency ? String(body.spend_currency).trim() : null
   const companionType: string | null = body.companion_type ?? null
@@ -111,7 +111,8 @@ export async function POST(
   // ── 보틀 기록 (입력된 경우만) → bottle_logs ──
   const hasBottle = bottle && (bottle.name?.trim() || bottle.product_id)
   if (hasBottle) {
-    const photos: string[] = Array.isArray(bottle!.photo_urls) ? bottle!.photo_urls.slice(0, 2) : []
+    // 좋았던 메뉴/한 잔은 폼에서 2장 제한, 구매 인증은 5장 — 서버는 5장까지 허용
+    const photos: string[] = Array.isArray(bottle!.photo_urls) ? bottle!.photo_urls.slice(0, 5) : []
     // 증류소는 폼에서 현장구매/시음 구분, 그 외는 유형 기본값
     let context = BOTTLE_CONTEXT[type] ?? 'shop_purchase'
     if (type === 'distillery' && bottle!.context && ['distillery_direct', 'distillery_tasting'].includes(bottle!.context)) {

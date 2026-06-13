@@ -764,7 +764,7 @@ export default function GlobalPlaceDetail({
 
         {showPhotoForm && (
           <div className="border border-gray-200 rounded-lg p-3 mb-2 bg-gray-50 space-y-2">
-            <PhotoPicker files={photoFiles} setFiles={setPhotoFiles} label="사진 (최대 2장)" />
+            <PhotoPicker files={photoFiles} setFiles={setPhotoFiles} label="사진 (최대 5장)" max={5} />
             <input
               value={photoCaption}
               onChange={(e) => setPhotoCaption(e.target.value)}
