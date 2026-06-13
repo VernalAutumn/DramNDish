@@ -97,7 +97,7 @@ export default function GlobalExplorer() {
   const [places, setPlaces] = useState<GlobalPlace[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showMe, setShowMe] = useState(false) // 모바일: 내 기록 풀스크린 토글
-  const [meCollapsed, setMeCollapsed] = useState(false) // 데스크탑: 우측 상시 표시(접기 가능)
+  const [meCollapsed, setMeCollapsed] = useState(true) // 데스크탑: 우측 상시 표시, 기본 접힘(계정 헤더만)
 
   // /global?place={id} — 등록 직후·공유 링크로 상세 바로 열기
   useEffect(() => {
@@ -456,7 +456,7 @@ export default function GlobalExplorer() {
             )}
           </div>
 
-          {/* 패널 푸터: 장소 등록(§8.6) · 내 기록(§8.5) */}
+          {/* 패널 푸터: 장소 등록(§8.6). 내 기록은 우측 상시 패널로 분리됨. */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border-default flex-shrink-0 bg-white">
             <button
               onClick={() => router.push('/global/add')}
@@ -465,13 +465,10 @@ export default function GlobalExplorer() {
             >
               + 장소 등록
             </button>
-            {/* 데스크탑은 우측에 상시 표시 — 이 버튼은 모바일 토글 / 접었을 때 복원용 */}
+            {/* 모바일에서만 내 기록 진입 (데스크탑은 우측 상시) */}
             <button
-              onClick={() => {
-                setShowMe(true)
-                setMeCollapsed(false)
-              }}
-              className="px-4 py-2.5 text-xs font-semibold rounded-lg border border-border-default text-gray-600"
+              onClick={() => setShowMe(true)}
+              className="md:hidden px-4 py-2.5 text-xs font-semibold rounded-lg border border-border-default text-gray-600"
             >
               내 기록
             </button>
@@ -500,21 +497,15 @@ export default function GlobalExplorer() {
       {/* ── 내 기록 — 데스크탑은 화면 우측 끝에 상시 표시 (리스트=좌, 내 기록=우) ──
           국내판처럼 버튼 없이 기본 노출. 접기(×) 시 우측에 작은 복원 칩만 남는다.
           상세 패널(리스트 옆 중앙)과 반대편이라 겹치지 않는다. */}
-      <div className={`hidden md:flex absolute z-30 top-4 bottom-4 right-4 ${meCollapsed ? 'items-start' : 'w-[380px]'}`}>
+      <div className={`hidden md:flex absolute z-30 top-4 right-4 w-[380px] ${meCollapsed ? '' : 'bottom-4'}`}>
         {meCollapsed ? (
-          <button
-            onClick={() => setMeCollapsed(false)}
-            className="bg-white rounded-xl px-3 py-2 text-xs font-bold shadow-xl"
-            style={{ color: 'var(--color-brand-primary)' }}
-          >
-            내 기록 펼치기
-          </button>
+          <GlobalMyRecords collapsed onToggle={() => setMeCollapsed(false)} />
         ) : (
           <div className="panel w-full h-full overflow-hidden rounded-2xl bg-white shadow-xl">
             <GlobalMyRecords
               onPlaceClick={(id) => setSelectedId(id)}
               onAddPlace={() => router.push('/global/add')}
-              onClose={() => setMeCollapsed(true)}
+              onToggle={() => setMeCollapsed(true)}
             />
           </div>
         )}

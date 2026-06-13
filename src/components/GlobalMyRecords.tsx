@@ -53,10 +53,14 @@ export default function GlobalMyRecords({
   onPlaceClick,
   onAddPlace,
   onClose,
+  collapsed = false,
+  onToggle,
 }: {
   onPlaceClick?: (id: string) => void
   onAddPlace?: () => void
   onClose?: () => void
+  collapsed?: boolean // 데스크탑: 접힌 상태(계정 헤더만)
+  onToggle?: () => void
 }) {
   const supabase = createClient()
   const [status, setStatus] = useState<Status>('loading')
@@ -65,6 +69,8 @@ export default function GlobalMyRecords({
   const [reviews, setReviews] = useState<MyReview[]>([])
   const [logs, setLogs] = useState<MyLog[]>([])
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [nickname, setNickname] = useState<string | null>(null)
+  const [authed, setAuthed] = useState(false)
 
   const load = useCallback(async () => {
     setStatus('loading')
@@ -85,9 +91,22 @@ export default function GlobalMyRecords({
     }
   }, [])
 
+  // 계정(닉네임)은 접힘 헤더에 항상 표시 — 데이터는 펼쳤을 때만 로드
   useEffect(() => {
-    load()
-  }, [load])
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data.user
+      setAuthed(!!u)
+      setNickname(
+        (u?.user_metadata?.app_nickname as string | undefined)?.trim() ||
+          u?.email?.split('@')[0] ||
+          null
+      )
+    })
+  }, [supabase])
+
+  useEffect(() => {
+    if (!collapsed) load()
+  }, [load, collapsed])
 
   const login = async () => {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
@@ -145,15 +164,61 @@ export default function GlobalMyRecords({
     { key: 'bottles', label: '바틀 구매', count: bottlePurchases.length },
   ]
 
+  // 계정 헤더 (접힘·펼침 공통) — 국내판 마이페이지 패턴
+  const avatar = (
+    <div
+      className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+      style={{ background: 'var(--color-brand-primary)' }}
+    >
+      {nickname ? nickname[0].toUpperCase() : '?'}
+    </div>
+  )
+  const chevron = (up: boolean) => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" className="flex-shrink-0">
+      <path d={up ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+
+  // ── 접힌 상태: 계정 헤더만 (기본값, 데스크탑) ──
+  if (collapsed) {
+    return (
+      <button
+        onClick={onToggle}
+        className="w-full self-start flex items-center gap-3 px-4 py-3 bg-white rounded-2xl shadow-xl"
+      >
+        {avatar}
+        <div className="flex-1 text-left min-w-0">
+          <p className="text-sm font-bold text-gray-900 truncate">
+            {authed ? (nickname ?? '내 기록') : '로그인이 필요합니다'}
+          </p>
+          <p className="text-[11px] text-gray-400">마이페이지</p>
+        </div>
+        {chevron(false)}
+      </button>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border-default flex-shrink-0">
-        <h2 className="text-base font-bold text-gray-900">내 기록</h2>
-        {onClose && (
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1" aria-label="닫기">
-            ×
+      {/* 계정 헤더 */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-border-default flex-shrink-0">
+        {avatar}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-900 truncate">
+            {authed ? (nickname ?? '내 기록') : '로그인이 필요합니다'}
+          </p>
+          <p className="text-[11px] text-gray-400">마이페이지</p>
+        </div>
+        {onToggle ? (
+          <button onClick={onToggle} aria-label="접기" className="px-1">
+            {chevron(true)}
           </button>
+        ) : (
+          onClose && (
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1" aria-label="닫기">
+              ×
+            </button>
+          )
         )}
       </div>
 
