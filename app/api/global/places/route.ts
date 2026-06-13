@@ -51,8 +51,8 @@ export async function GET(req: NextRequest) {
 /**
  * POST /api/global/places — 커뮤니티 장소 등록 (§8.6, 로그인 필수)
  * 필수 = 사실 최소치(이름·유형·국가). 태그·후기 등은 등록 후 선택 (§8.6).
- * TODO(§8.6): 구글 Places 검색(세션 토큰) ingest — API 키 연동 후.
- *   현재는 수동 입력. 좌표(lat/lng)는 Places 연동 시 자동 적재 예정.
+ * 구글 Places(New) 검색으로 선택 시 lat/lng·주소·지도링크가 함께 들어와 적재된다.
+ * 직접 입력도 계속 허용(좌표 없이 등록 가능).
  */
 const PLACE_TYPES = ['liquor_shop', 'bar', 'restaurant', 'distillery']
 const COUNTRY_RE = /^[A-Z]{2}$/
@@ -68,6 +68,18 @@ export async function POST(req: NextRequest) {
   const address: string | null = body.address ? String(body.address).trim() : null
   const googleMapsUrl: string | null = body.google_maps_url ? String(body.google_maps_url).trim() : null
   const officialUrl: string | null = body.official_url ? String(body.official_url).trim() : null
+  // 좌표: 구글 검색으로 선택한 경우 함께 들어온다. 숫자로 검증하고, 아니면 null.
+  const lat: number | null = Number.isFinite(body.lat) ? Number(body.lat) : null
+  const lng: number | null = Number.isFinite(body.lng) ? Number(body.lng) : null
+
+  // 추가 정보(attributes): 임의 JSON을 그대로 받지 않고, 허용한 boolean 키만 통과시킨다.
+  const ATTR_BOOL_KEYS = ['tax_free', 'has_tasting', 'booking_required', 'smoking', 'handfill', 'has_handfill']
+  const attributes: Record<string, boolean> = {}
+  if (body.attributes && typeof body.attributes === 'object') {
+    for (const k of ATTR_BOOL_KEYS) {
+      if (typeof body.attributes[k] === 'boolean') attributes[k] = body.attributes[k]
+    }
+  }
 
   if (!name) return NextResponse.json({ error: '장소 이름을 입력해주세요.' }, { status: 400 })
   if (!PLACE_TYPES.includes(type)) {
@@ -110,8 +122,11 @@ export async function POST(req: NextRequest) {
       country,
       region,
       address,
+      lat,
+      lng,
       google_maps_url: googleMapsUrl,
       official_url: officialUrl,
+      attributes,
       source: 'community',
       contributed_by: user.id,
     })

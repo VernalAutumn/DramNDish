@@ -7,7 +7,7 @@
 
 ## 📋 현재 상태
 
-- **최근 업데이트:** 2026-05-12
+- **최근 업데이트:** 2026-06-13
 - **활성 작업:**
   1. 국내 서비스 신뢰도 강화 (기여자 표시 및 신고 시스템)
   2. 운영 효율화를 위한 디스코드 웹훅(Webhook) 연동
@@ -48,13 +48,15 @@
 **구현 방향:** 지도 렌더링 비용을 절감하는 '리스트 기반 MVP' 전략
 
 **세부 논의:**
-- 해외 탭은 지도를 그리지 않고(0원), 구글 맵 앱으로 아웃링크(Deep Link)
+- 해외 탭 지도: **무료 Google Maps Embed API**로 표시(무제한 0원) — 선택 장소를 핀으로, 미선택 시 국가 개요. 인터랙티브 JS/Static Maps는 트래픽 보고 추후 판단 (2026-06-14 유저 결정: "명색이 지도 앱이니 지도는 떠야 한다, 우선 무료로")
+- 국가별 1개씩만 조회·표시(모든 국가 동시 로딩 폐기) — 로딩 리소스 절감
+- 구글 맵 앱 아웃링크(딥링크)는 상세의 '지도보기' 버튼으로 병행 유지
 - 월별 해외 장소 저장 횟수 제한(Quota) 기반 구독제($2~3) 도입
 
 **태스크:**
-- [ ] `src/lib/adapters/`: IPlaceStandard 인터페이스 및 API 파서 구축
-- [ ] DB 스키마 업데이트: `region`, `source`, `usage_quota` 컬럼 추가
-- [ ] 구글 Places API 세션 토큰 및 필드 마스크 최적화 적용
+- [x] `src/lib/adapters/`: IPlaceStandard 인터페이스 및 API 파서 구축
+- [ ] DB 스키마 업데이트: `region`, `source`, `usage_quota` 컬럼 추가 (region·source 기존 존재, usage_quota 미적용)
+- [x] 구글 Places API 세션 토큰 및 필드 마스크 최적화 적용 (Autocomplete+Details, includedRegionCodes로 한국 밴)
 
 ---
 
@@ -95,6 +97,8 @@
 
 | 날짜 | 작업 내용 | 커밋 |
 |------|----------|------|
+| 2026-06-14 | 해외 지도 무료 Embed 적용: src/lib/google-embed.ts, GlobalExplorer 배경 지도(선택 장소 핀/국가 개요)+국가별 단일 로딩(모든국가 폐기), GlobalPlaceDetail 미니 지도. NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY 필요(Embed 전용 키 권장). Embed 핀은 좌표 대신 이름 검색(아웃링크와 동일)으로 — 동네 단위 거친 좌표(수기/시드) 오핀 방지 | - |
+| 2026-06-13 | 구글 Places(New) 연동: 어댑터(IPlaceStandard·Autocomplete·Details), 검색 라우트 2개, /global/add 검색 UI(디바운스·세션토큰·자동채움), POST에 lat/lng 적재. includedRegionCodes로 한국 밴(국내는 네이버). 한국어 검색은 매칭 안 됨→영어/현지어 입력 안내 | - |
 | 2026-05-13 | 추천순 탭 개편: PC 거리순→추천순(재방문 의사 점수 기반), 모바일 추천순 버튼 신설, GET /api/places?sort=recommended 추가 | - |
 | 2026-05-13 | 소셜 리액션(재방문 의사 있어요/없어요) 구현: place_reactions 테이블 SQL, API Route, PlaceDetailClient·NaverMap PC 패널 UI, 낙관적 업데이트 | - |
 | 2026-05-12 | 디자인 시스템 기준 UI 전반 정비: 폰트 하한(text-[11px]), PC 마이페이지 카드 확대, TypeBadge·버튼·탭·패딩 통일 | `bfb2d55` |

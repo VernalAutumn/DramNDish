@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import GlobalPlaceDetail from './GlobalPlaceDetail'
 import GlobalMyRecords from './GlobalMyRecords'
-import { GlobalPlace, GLOBAL_TYPE_LABEL, countryLabel } from '@/src/lib/global'
+import { GlobalPlace, GLOBAL_TYPE_LABEL, COUNTRY_LABEL, countryLabel } from '@/src/lib/global'
+import { EMBED_KEY, placeEmbedSrc, embedCountrySrc } from '@/src/lib/google-embed'
 
 // dramndish Global(해외) 탐색 화면 — §8.1 구조 (국내 NaverMap 방식 참고).
-// 전체 배경 = 지도(골격), 좌측 플로팅 리스트, 선택 시 리스트 우측에 상세 패널.
-// 지도는 부록 C대로 API 키 연동 전 골격만 — 키가 없으면 명시적 안내 (§9).
-// TODO(다음 슬라이스): Google Maps JS API 마커·fitBounds·유효 중심 panTo (§8.1)
+// 전체 배경 = 지도(무료 Google Maps Embed), 좌측 플로팅 리스트, 선택 시 우측 상세 패널.
+// 비용 0원 기조: Embed API(무제한 무료)로 선택 장소를 핀 표시, 국가별 1개씩만 로딩.
 
-const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+// 국가는 고정 목록(JP/TW/UK/US)에서 1개씩 선택 — '모든 국가' 동시 로딩은 하지 않는다.
+const COUNTRIES = Object.keys(COUNTRY_LABEL)
 
 type Status = 'loading' | 'ready' | 'empty' | 'not_ready' | 'error'
 
@@ -105,8 +106,8 @@ export default function GlobalExplorer() {
     if (pid) setSelectedId(pid)
   }, [searchParams])
 
-  // 필터·검색·정렬 (§8.1 상단 바) — 데이터가 작아 클라이언트에서 처리
-  const [country, setCountry] = useState('all')
+  // 필터·검색 (§8.1 상단 바). 국가는 1개씩 선택 — 데이터도 그 국가만 불러온다.
+  const [country, setCountry] = useState(COUNTRIES[0] ?? 'JP')
   const [type, setType] = useState('all')
   const [q, setQ] = useState('')
 
@@ -115,10 +116,11 @@ export default function GlobalExplorer() {
   const [favIds, setFavIds] = useState<string[]>([])
   const [favState, setFavState] = useState<'loading' | 'ready' | 'unauth' | 'error'>('loading')
 
+  // 선택한 국가의 장소만 불러온다 (전체 동시 로딩 안 함 → 리소스 절약).
   const load = useCallback(async () => {
     setStatus('loading')
     try {
-      const res = await fetch('/api/global/places')
+      const res = await fetch(`/api/global/places?country=${country}`)
       if (res.status === 503) {
         setStatus('not_ready')
         return
@@ -131,7 +133,7 @@ export default function GlobalExplorer() {
     } catch {
       setStatus('error')
     }
-  }, [])
+  }, [country])
 
   useEffect(() => {
     load()
@@ -164,15 +166,16 @@ export default function GlobalExplorer() {
     }
   }, [mainTab])
 
-  const countries = useMemo(
-    () => Array.from(new Set(places.map((p) => p.country))).sort(),
-    [places]
+  // 배경 지도에 보여줄 선택 장소 (좌표가 있을 때만 핀 표시 가능)
+  const selectedPlace = useMemo(
+    () => places.find((p) => p.id === selectedId) ?? null,
+    [places, selectedId]
   )
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return places.filter((p) => {
-      if (country !== 'all' && p.country !== country) return false
+      // 국가는 이미 서버에서 걸러져 옴 — 여기선 유형·검색어만.
       if (type !== 'all' && p.type !== type) return false
       if (
         needle &&
@@ -195,16 +198,31 @@ export default function GlobalExplorer() {
 
   return (
     <div className="relative h-[100dvh] overflow-hidden bg-surface-tertiary">
-      {/* ── 지도 영역 (전체 배경) — 골격 ─────────────────────────────────── */}
-      <div className="absolute inset-0 z-0 flex items-center justify-center">
-        <div className="text-center px-6">
-          <p className="text-sm font-medium text-gray-500">
-            {MAPS_KEY
-              ? '지도 연동 준비중 — 다음 업데이트에서 표시됩니다.'
-              : '지도 준비중 — Google Maps API 키 연동 전입니다.'}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">장소는 좌측 목록에서 확인할 수 있습니다.</p>
-        </div>
+      {/* ── 지도 영역 (전체 배경) — 무료 Google Maps Embed ───────────────────
+          선택 장소가 있으면 그 위치를 핀으로, 없으면 국가 개요 지도를 보여준다. */}
+      <div className="absolute inset-0 z-0">
+        {EMBED_KEY ? (
+          <iframe
+            title="해외 지도"
+            className="w-full h-full border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            src={
+              (selectedPlace
+                ? placeEmbedSrc(selectedPlace)
+                : embedCountrySrc(country)) ?? undefined
+            }
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center px-6">
+              <p className="text-sm font-medium text-gray-500">지도 키가 아직 설정되지 않았습니다.</p>
+              <p className="text-xs text-gray-400 mt-1">
+                NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY 추가 후 표시됩니다. 장소는 좌측 목록에서 확인하세요.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── 📱 모바일 국내/해외 탑 앱바 ─────────────────────────────────── */}
@@ -298,11 +316,13 @@ export default function GlobalExplorer() {
             <div className="flex gap-2">
               <select
                 value={country}
-                onChange={(e) => setCountry(e.target.value)}
+                onChange={(e) => {
+                  setCountry(e.target.value)
+                  setSelectedId(null) // 다른 국가로 바꾸면 선택 해제
+                }}
                 className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
               >
-                <option value="all">모든 국가</option>
-                {countries.map((c) => (
+                {COUNTRIES.map((c) => (
                   <option key={c} value={c}>
                     {countryLabel(c)}
                   </option>

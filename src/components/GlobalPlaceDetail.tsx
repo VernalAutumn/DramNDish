@@ -8,6 +8,7 @@ import GlobalPurchaseForm from './GlobalPurchaseForm'
 import PhotoLightbox from './PhotoLightbox'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
+import { placeEmbedSrc } from '@/src/lib/google-embed'
 import {
   GlobalPlace,
   GlobalReview,
@@ -527,6 +528,19 @@ export default function GlobalPlaceDetail({
             </button>
           )}
         </div>
+
+        {/* 3.5 위치 — 무료 Embed 미니 지도 (이름으로 검색, 모바일에서도 위치 확인) */}
+        {placeEmbedSrc(place) && (
+          <div className="mt-3 rounded-lg overflow-hidden border border-gray-200" style={{ height: 160 }}>
+            <iframe
+              title="위치"
+              className="w-full h-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              src={placeEmbedSrc(place)!}
+            />
+          </div>
+        )}
 
         {/* 4. 재방문 의사 분포 (★ 3단 집계) */}
         <SectionTitle>재방문 의사</SectionTitle>

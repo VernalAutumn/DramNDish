@@ -1,13 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import { COUNTRY_LABEL, GLOBAL_TYPE_LABEL } from '@/src/lib/global'
+import type { PlaceSuggestion } from '@/src/lib/adapters/types'
 
-// 장소 등록 (§8.6) — 플로우: 국가 → 장소 찾기 → 최소 정보 → 등록 → 감사 페이지.
-// TODO(부록 C): 구글 Places 검색(세션 토큰)은 API 키 연동 후 — 현재는 수동 입력 골격.
+// 장소 등록 (§8.6) — 플로우: 국가 → 장소 찾기(구글) → 최소 정보 → 등록 → 감사 페이지.
+// 구글 Places(New) Autocomplete + Details, 세션 토큰으로 묶어 과금 1회분.
+
+// 유형별 추가 정보(attributes) 토글. 사실 정보를 등록 시 선택적으로 켠다.
+// 여기에 줄을 추가하면 폼에 토글이 늘어난다. on = 체크 시 attributes에 저장할 값
+// (예: 면세 가능→tax_free:true, 금연→smoking:false). 서버 POST의 화이트리스트와 키를 맞출 것.
+const ATTR_TOGGLES: Record<string, { key: string; label: string; on: boolean }[]> = {
+  liquor_shop: [
+    { key: 'tax_free', label: '면세 가능', on: true },
+    { key: 'has_tasting', label: '시음 가능', on: true },
+  ],
+  distillery: [
+    { key: 'booking_required', label: '예약 필수', on: true },
+  ],
+  bar: [
+    { key: 'smoking', label: '금연', on: false },
+  ],
+  restaurant: [],
+}
 
 export default function GlobalAddPage() {
   const router = useRouter()
@@ -28,6 +46,19 @@ export default function GlobalAddPage() {
   const [error, setError] = useState<string | null>(null)
   const [dupId, setDupId] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
+  // 추가 정보 토글 체크 상태 (attribute key → 켜짐 여부)
+  const [attrOn, setAttrOn] = useState<Record<string, boolean>>({})
+
+  // 구글 검색(자동완성) 상태
+  const [search, setSearch] = useState('')
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
+  const [searching, setSearching] = useState(false)
+  const [picked, setPicked] = useState(false) // 구글에서 골라 자동 채움됨
+  const [coords, setCoords] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+  // 자동완성↔상세를 한 세션으로 묶는 토큰. 선택 후 비워 다음 검색은 새 토큰을 쓴다.
+  const sessionToken = useRef<string | null>(null)
+  // 제안을 막 선택한 직후 1회: 검색창에 이름이 채워져도 재검색·드롭다운을 띄우지 않는다.
+  const justPicked = useRef(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user))
@@ -41,12 +72,75 @@ export default function GlobalAddPage() {
     })
   }
 
+  // 타이핑하면 300ms 멈춘 뒤 자동완성 호출 (매 글자마다 부르지 않도록 디바운스).
+  useEffect(() => {
+    // 제안을 막 골라 검색창이 채워진 경우엔 재검색하지 않고 드롭다운을 닫은 채로 둔다.
+    if (justPicked.current) {
+      justPicked.current = false
+      setSuggestions([])
+      setSearching(false)
+      return
+    }
+    const q = search.trim()
+    if (q.length < 2) {
+      setSuggestions([])
+      return
+    }
+    // 검색 세션이 없으면 새로 연다 (자동완성+상세를 한 토큰으로 묶어 과금 절약).
+    if (!sessionToken.current) sessionToken.current = crypto.randomUUID()
+    setSearching(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/global/search?query=${encodeURIComponent(q)}&country=${country}&token=${sessionToken.current}`
+        )
+        const json = await res.json().catch(() => ({}))
+        setSuggestions(json.suggestions ?? [])
+      } catch {
+        setSuggestions([])
+      } finally {
+        setSearching(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search, country])
+
+  // 제안 선택 → 상세 조회 → 폼 자동 채움. 같은 세션 토큰으로 마감.
+  const pickSuggestion = async (s: PlaceSuggestion) => {
+    justPicked.current = true // 아래 setSearch로 인한 재검색을 막는다
+    setSuggestions([])
+    setSearch(s.mainText)
+    try {
+      const res = await fetch(
+        `/api/global/place?placeId=${encodeURIComponent(s.providerId)}&country=${country}&token=${sessionToken.current ?? ''}`
+      )
+      const json = await res.json().catch(() => ({}))
+      const p = json.place
+      if (p) {
+        // 구글이 준 현지어 원문 이름 → "현지어 원문" 칸. "한글명"은 사용자가 직접 입력.
+        setNameLocal(p.name ?? '')
+        setAddress(p.address ?? '')
+        setMapsUrl(p.googleMapsUrl ?? '')
+        setCoords({ lat: p.lat ?? null, lng: p.lng ?? null })
+        setPicked(true)
+      }
+    } catch {
+      /* 상세 실패 시 직접 입력으로 진행 */
+    }
+    sessionToken.current = null // 세션 마감 — 다음 검색은 새 토큰
+  }
+
   const submit = async () => {
     setError(null)
     setDupId(null)
     if (!name.trim()) {
       setError('장소 이름을 입력해주세요.')
       return
+    }
+    // 현재 유형의 켜진 토글만 attributes로 (체크된 것만 키를 넣음 = 미지정은 '정보 없음')
+    const attributes: Record<string, boolean> = {}
+    for (const t of ATTR_TOGGLES[type] ?? []) {
+      if (attrOn[t.key]) attributes[t.key] = t.on
     }
     setBusy(true)
     try {
@@ -61,8 +155,11 @@ export default function GlobalAddPage() {
           country,
           region: region.trim() || null,
           address: address.trim() || null,
+          lat: coords.lat,
+          lng: coords.lng,
           google_maps_url: mapsUrl.trim() || null,
           official_url: officialUrl.trim() || null,
+          attributes,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -111,6 +208,12 @@ export default function GlobalAddPage() {
                 setAddress('')
                 setMapsUrl('')
                 setOfficialUrl('')
+                setSearch('')
+                setSuggestions([])
+                setPicked(false)
+                setCoords({ lat: null, lng: null })
+                setAttrOn({})
+                sessionToken.current = null
               }}
               className="flex-1 py-2.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700"
             >
@@ -169,17 +272,50 @@ export default function GlobalAddPage() {
               </div>
             </div>
 
-            {/* ② 장소 찾기 — 구글 Places 골격 (부록 C: 키 연동 전) */}
-            <div className="border border-dashed border-gray-300 rounded-lg px-3 py-2.5">
-              <p className="text-[11px] text-gray-500">
-                🔍 구글 장소 검색은 준비중입니다 (API 키 연동 후 제공).
-                아래에 직접 입력해주세요 — 이름·주소는 구글 지도 표기를 권장합니다.
-              </p>
+            {/* ② 장소 찾기 — 구글 Places 검색 (선택한 국가 안에서만, 한국 제외) */}
+            <div className="relative">
+              <p className="text-xs font-bold text-gray-900 mb-1.5">② 장소 찾기</p>
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setPicked(false)
+                }}
+                // 다른 곳을 클릭하면 드롭다운을 닫는다 (제안 클릭은 먼저 처리되도록 약간 지연).
+                onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+                placeholder={`🔍 ${COUNTRY_LABEL[country] ?? ''}에서 검색 (영어/현지어 이름 권장)`}
+                className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2"
+              />
+              {suggestions.length > 0 && (
+                <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  {suggestions.map((s) => (
+                    <li key={s.providerId}>
+                      <button
+                        type="button"
+                        onClick={() => pickSuggestion(s)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                      >
+                        <span className="block text-xs font-medium text-gray-900">{s.mainText}</span>
+                        <span className="block text-[11px] text-gray-500">{s.secondaryText}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {searching ? (
+                <p className="text-[11px] text-gray-400 mt-1">검색 중…</p>
+              ) : picked ? (
+                <p className="text-[11px] text-emerald-600 mt-1">✓ 현지어 원문·주소·좌표를 불러왔습니다. 아래 <b>한글명</b>에 한국인들이 부르는 이름을 입력해주세요.</p>
+              ) : (
+                <p className="text-[11px] text-gray-400 mt-1">
+                  한국어로는 잘 안 잡힙니다 — 가게의 영어/현지어 이름으로 검색하세요. 직접 입력도 가능합니다.
+                </p>
+              )}
             </div>
 
             {/* ③ 최소 정보 */}
             <div>
-              <p className="text-xs font-bold text-gray-900 mb-1.5">② 유형 (필수)</p>
+              <p className="text-xs font-bold text-gray-900 mb-1.5">③ 유형 (필수)</p>
               <div className="flex gap-1.5">
                 {Object.entries(GLOBAL_TYPE_LABEL).map(([k, l]) => (
                   <button
@@ -222,7 +358,7 @@ export default function GlobalAddPage() {
             </div>
 
             <div className="space-y-2">
-              <p className="text-xs font-bold text-gray-900">③ 장소 정보</p>
+              <p className="text-xs font-bold text-gray-900">④ 장소 정보</p>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="이름 (필수, 한국어/통용 표기)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
               <input value={nameLocal} onChange={(e) => setNameLocal(e.target.value)} placeholder="현지어 원문 (선택, 예: リカーマウンテン)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
               <input
@@ -235,6 +371,32 @@ export default function GlobalAddPage() {
               <input value={mapsUrl} onChange={(e) => setMapsUrl(e.target.value)} placeholder="구글 지도 링크 (선택)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
               <input value={officialUrl} onChange={(e) => setOfficialUrl(e.target.value)} placeholder="공식 사이트 (선택 — SNS 제외)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
             </div>
+
+            {/* ⑤ 추가 정보 (선택) — 유형별 사실 토글 → attributes */}
+            {(ATTR_TOGGLES[type]?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-xs font-bold text-gray-900 mb-1.5">⑤ 추가 정보 (선택)</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {ATTR_TOGGLES[type].map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setAttrOn((p) => ({ ...p, [t.key]: !p[t.key] }))}
+                      className="px-3 py-1.5 text-[11px] font-medium rounded-full border"
+                      style={
+                        attrOn[t.key]
+                          ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
+                          : { borderColor: '#e5e7eb', color: '#6b7280' }
+                      }
+                    >
+                      {attrOn[t.key] ? '✓ ' : ''}
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">확실한 정보만 켜주세요. 체크 안 하면 &lsquo;정보 없음&rsquo;으로 남습니다.</p>
+              </div>
+            )}
 
             {error && (
               <p className="text-xs text-red-500">
