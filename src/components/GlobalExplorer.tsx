@@ -97,13 +97,24 @@ export default function GlobalExplorer() {
   const [status, setStatus] = useState<Status>('loading')
   const [places, setPlaces] = useState<GlobalPlace[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 지도가 보는 장소 — 상세 열림/닫힘과 분리. X로 상세를 닫아도 지도는 유지(리셋·깜빡임 방지).
+  const [mapPlaceId, setMapPlaceId] = useState<string | null>(null)
   const [showMe, setShowMe] = useState(false) // 모바일: 내 기록 풀스크린 토글
   const [meCollapsed, setMeCollapsed] = useState(true) // 데스크탑: 우측 상시 표시, 기본 접힘(계정 헤더만)
+
+  // 리스트에서 장소 선택 — 상세는 토글, 지도는 그 장소를 잡고 유지(닫아도 안 바뀜)
+  const pickPlace = (id: string) => {
+    setSelectedId((prev) => (prev === id ? null : id))
+    setMapPlaceId(id)
+  }
 
   // /global?place={id} — 등록 직후·공유 링크로 상세 바로 열기
   useEffect(() => {
     const pid = searchParams.get('place')
-    if (pid) setSelectedId(pid)
+    if (pid) {
+      setSelectedId(pid)
+      setMapPlaceId(pid)
+    }
   }, [searchParams])
 
   // 필터·검색 (§8.1 상단 바). 국가는 1개씩 선택 — 데이터도 그 국가만 불러온다.
@@ -166,10 +177,10 @@ export default function GlobalExplorer() {
     }
   }, [mainTab])
 
-  // 배경 지도에 보여줄 선택 장소 (좌표가 있을 때만 핀 표시 가능)
-  const selectedPlace = useMemo(
-    () => places.find((p) => p.id === selectedId) ?? null,
-    [places, selectedId]
+  // 지도에 핀으로 보여줄 장소 — mapPlaceId 기준(상세를 닫아도 유지됨)
+  const mapPlace = useMemo(
+    () => places.find((p) => p.id === mapPlaceId) ?? null,
+    [places, mapPlaceId]
   )
 
   const filtered = useMemo(() => {
@@ -197,10 +208,12 @@ export default function GlobalExplorer() {
   const selected = selectedId != null
 
   return (
-    <div className="relative h-[100dvh] overflow-hidden bg-surface-tertiary">
-      {/* ── 지도 영역 (전체 배경) — 무료 Google Maps Embed ───────────────────
-          선택 장소가 있으면 그 위치를 핀으로, 없으면 국가 개요 지도를 보여준다. */}
-      <div className="absolute inset-0 z-0">
+    <div className="relative h-[100dvh] overflow-hidden bg-surface-tertiary md:flex">
+      {/* ── 지도 영역 — 무료 Google Maps Embed ───────────────────────────────
+          구글 지도 레이아웃: 좌측 리스트 칸(order-1)을 뺀 나머지(order-2, flex-1)를
+          지도가 차지한다. Embed는 "보이는 지도 영역의 중앙"에 핀을 찍으므로, 영역을
+          이렇게 고정하면 핀이 곧 보이는 중앙에 온다. 모바일은 리스트가 전체를 덮어 숨김. */}
+      <div className="relative hidden md:block md:order-2 md:flex-1 h-full">
         {EMBED_KEY ? (
           <iframe
             title="해외 지도"
@@ -208,8 +221,8 @@ export default function GlobalExplorer() {
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
             src={
-              (selectedPlace
-                ? placeEmbedSrc(selectedPlace)
+              (mapPlace
+                ? placeEmbedSrc(mapPlace)
                 : embedCountrySrc(country)) ?? undefined
             }
           />
@@ -277,16 +290,16 @@ export default function GlobalExplorer() {
         </button>
       </div>
 
-      {/* ── 좌측 플로팅 리스트 패널 (§8.1) ─────────────────────────────── */}
+      {/* ── 좌측 리스트 칸 (도킹 사이드바) ───────────────────────────────
+          플로팅 → 고정 컬럼. 모바일: 앱바 아래 풀폭 / 데스크탑: 좌측 고정폭(order-1). */}
       <div
         className={[
-          'absolute z-20 flex flex-col',
-          // 모바일: 앱바 아래 풀폭 / 데스크탑: 좌측 플로팅
-          'inset-x-0 top-[calc(env(safe-area-inset-top)+48px)] bottom-0',
-          'md:inset-auto md:top-4 md:bottom-4 md:left-4 md:w-[360px]',
+          'relative z-20 flex flex-col h-full',
+          'w-full pt-[calc(env(safe-area-inset-top)+48px)]',
+          'md:order-1 md:w-[380px] md:flex-shrink-0 md:pt-0',
         ].join(' ')}
       >
-        <div className="panel w-full h-full flex flex-col overflow-hidden md:rounded-2xl bg-white">
+        <div className="w-full h-full flex flex-col overflow-hidden bg-white md:border-r md:border-border-default">
           {/* 목록 / 즐겨찾기 탭 (국내판 패턴) */}
           <div className="flex border-b border-border-default flex-shrink-0">
             {(
@@ -319,6 +332,7 @@ export default function GlobalExplorer() {
                 onChange={(e) => {
                   setCountry(e.target.value)
                   setSelectedId(null) // 다른 국가로 바꾸면 선택 해제
+                  setMapPlaceId(null) // 지도도 국가 개요로 (이때만 리셋)
                 }}
                 className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
               >
@@ -388,7 +402,7 @@ export default function GlobalExplorer() {
                           <PlaceCard
                             p={p}
                             active={p.id === selectedId}
-                            onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                            onClick={() => pickPlace(p.id)}
                           />
                         </li>
                       ))}
@@ -447,7 +461,7 @@ export default function GlobalExplorer() {
                     <p className="text-sm text-gray-500">조건에 맞는 결과가 없습니다.</p>
                     <button
                       onClick={() => {
-                        setCountry('all')
+                        // 국가는 1개씩 보는 기본 내비라 유지. 유형·검색어만 초기화.
                         setType('all')
                         setQ('')
                       }}
@@ -464,7 +478,7 @@ export default function GlobalExplorer() {
                         <PlaceCard
                           p={p}
                           active={p.id === selectedId}
-                          onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                          onClick={() => pickPlace(p.id)}
                         />
                       </li>
                     ))}
@@ -496,22 +510,21 @@ export default function GlobalExplorer() {
         </div>
       </div>
 
-      {/* ── 상세 패널 — 리스트 우측에 이어서 열림 (§8.1) ─────────────────── */}
+      {/* ── 상세 패널 — 지도 위에 떠 있는 플로팅 카드 (구글 지도식) ──────────
+          리스트(좌측 고정) 바로 오른쪽, 지도 위에 라운드+그림자 카드로 띄운다.
+          지도 iframe은 그대로 전체를 차지하므로 핀 중앙은 유지되고, 카드만 떠 있음.
+          모바일: 앱바 아래 풀스크린. */}
       {selected && (
-        <>
-          {/* 데스크탑: list | detail */}
-          <div className="hidden md:flex absolute z-20 top-4 bottom-4 left-[calc(1rem+360px+0.75rem)] w-[400px]">
-            <div className="panel w-full h-full overflow-hidden md:rounded-2xl bg-white">
-              <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
-            </div>
-          </div>
-          {/* 모바일: 풀스크린 오버레이 */}
-          <div
-            className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white"
-          >
-            <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
-          </div>
-        </>
+        <div
+          className={[
+            'absolute z-40 bg-white overflow-hidden',
+            'inset-x-0 top-[calc(env(safe-area-inset-top)+48px)] bottom-0',
+            'md:inset-x-auto md:right-auto md:left-[calc(380px+0.75rem)] md:top-4 md:bottom-4 md:w-[400px]',
+            'md:rounded-2xl md:shadow-xl md:border md:border-border-default',
+          ].join(' ')}
+        >
+          <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
+        </div>
       )}
 
       {/* ── 내 기록 — 데스크탑은 화면 우측 끝에 상시 표시 (리스트=좌, 내 기록=우) ──
@@ -523,7 +536,10 @@ export default function GlobalExplorer() {
         ) : (
           <div className="panel w-full h-full overflow-hidden rounded-2xl bg-white shadow-xl">
             <GlobalMyRecords
-              onPlaceClick={(id) => setSelectedId(id)}
+              onPlaceClick={(id) => {
+                setSelectedId(id)
+                setMapPlaceId(id)
+              }}
               onAddPlace={() => router.push('/global/add')}
               onToggle={() => setMeCollapsed(true)}
             />
@@ -538,6 +554,7 @@ export default function GlobalExplorer() {
             onPlaceClick={(id) => {
               setShowMe(false)
               setSelectedId(id)
+              setMapPlaceId(id)
             }}
             onAddPlace={() => router.push('/global/add')}
             onClose={() => setShowMe(false)}
