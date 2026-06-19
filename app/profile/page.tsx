@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/src/lib/supabase-browser'
+import DeleteAccountButton from '@/src/components/DeleteAccountButton'
 import type { User } from '@supabase/supabase-js'
 
 const BRAND = '#BF3A21'
@@ -486,6 +487,7 @@ export default function ProfilePage() {
                 className="w-full py-3 rounded-2xl text-sm font-semibold text-red-500 bg-red-50 hover:bg-red-100 active:scale-[0.98] transition-all">
                 로그아웃
               </button>
+              <DeleteAccountButton />
               <LegalNote />
             </div>
           </div>

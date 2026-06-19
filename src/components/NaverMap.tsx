@@ -5,6 +5,7 @@ import Script from 'next/script'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { track } from '@vercel/analytics/react'
 import SearchFilter, { FilterState, INITIAL_FILTER } from './SearchFilter'
+import DeleteAccountButton from './DeleteAccountButton'
 import { createClient } from '@/src/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
 
@@ -4005,6 +4006,7 @@ export default function NaverMap() {
                     >
                       로그아웃
                     </button>
+                    <DeleteAccountButton />
                     {/* 법적 고지 */}
                     <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
                       본 서비스는 주류 관련 장소 정보도 다룹니다.<br />

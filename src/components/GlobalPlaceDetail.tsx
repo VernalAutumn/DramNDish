@@ -955,7 +955,7 @@ export default function GlobalPlaceDetail({
                 </p>
                 <div className="flex items-center justify-between mt-0.5">
                   <p className="text-[11px] text-gray-400">
-                    {b.user?.nickname ?? '익명'} · {b.logged_at}
+                    {b.user ? (b.user.nickname ?? '익명') : '탈퇴한 사용자'} · {b.logged_at}
                   </p>
                   {currentUser?.id === b.user_id && (
                     <button onClick={() => deleteLog(b.id)} className="text-[11px] text-gray-400 hover:text-red-500 underline">
@@ -1006,7 +1006,7 @@ export default function GlobalPlaceDetail({
                 <li key={r.id} className="border border-gray-100 rounded-xl px-3.5 py-3">
                   {/* 작성자 · 방문 정보 */}
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold text-gray-900">{r.user?.nickname ?? '익명'}</p>
+                    <p className="text-xs font-bold text-gray-900">{r.user ? (r.user.nickname ?? '익명') : '탈퇴한 사용자'}</p>
                     <p className="text-[11px] text-gray-400">방문 {r.visited_at}</p>
                   </div>
                   {(r.rating || r.companion_type || r.party_size) && (
@@ -1130,7 +1130,7 @@ export default function GlobalPlaceDetail({
 
         {/* 기여자 표시 (§10) */}
         <p className="text-[11px] text-gray-400 mt-6">
-          {place.source === 'seed' ? '운영진이 직접 조사해 등록한 장소입니다.' : `등록: ${place.contributor?.nickname ?? '익명'}`}
+          {place.source === 'seed' ? '운영진이 직접 조사해 등록한 장소입니다.' : `등록: ${place.contributor ? (place.contributor.nickname ?? '익명') : '탈퇴한 사용자'}`}
         </p>
       </div>
 

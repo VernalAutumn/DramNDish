@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/src/lib/supabase-browser'
 import PhotoLightbox from './PhotoLightbox'
+import DeleteAccountButton from './DeleteAccountButton'
 import {
   GLOBAL_TYPE_LABEL,
   BOTTLE_CONTEXT_LABEL,
@@ -390,6 +391,12 @@ export default function GlobalMyRecords({
             <p className="text-[11px] text-gray-400 mt-7">리캡 리포트·일정 플래너는 멤버십 기능으로 준비중입니다.</p>
           </div>
         </>
+      )}
+
+      {authed && (
+        <div className="px-5 pt-2 pb-4 border-t border-gray-100 flex-shrink-0">
+          <DeleteAccountButton />
+        </div>
       )}
 
       {lightbox && <PhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}
