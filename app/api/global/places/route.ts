@@ -98,16 +98,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
   }
 
-  // 중복 가드: 같은 국가에 같은 이름이 이미 있으면 등록 대신 안내
-  const { data: dup } = await client
-    .from('places')
-    .select('id, name, address')
-    .eq('country', country)
-    .ilike('name', name)
-    .maybeSingle()
-  if (dup) {
+  // 중복 가드: 원어(name_local) 기준 우선 — 구글 Details에서 자동 적재돼 철자가 안 흔들리고
+  // 보통 지점명까지 포함해 체인 지점도 구분된다. 원어가 없으면(직접 입력) 이름으로 폴백.
+  // 같은 국가 안에서만 비교. (이미 중복이 여러 건이어도 안전하도록 limit(1))
+  const findDup = async (col: 'name_local' | 'name', val: string) => {
+    const { data } = await client
+      .from('places')
+      .select('id')
+      .eq('country', country)
+      .ilike(col, val)
+      .limit(1)
+    return data?.[0]?.id ?? null
+  }
+  let existingId: string | null = null
+  if (nameLocal) existingId = await findDup('name_local', nameLocal)
+  if (!existingId) existingId = await findDup('name', name)
+  if (existingId) {
     return NextResponse.json(
-      { error: 'duplicate', message: '같은 이름의 장소가 이미 등록되어 있습니다.', existingId: dup.id },
+      { error: 'duplicate', message: '같은 장소가 이미 등록되어 있습니다.', existingId },
       { status: 409 }
     )
   }
