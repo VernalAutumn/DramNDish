@@ -55,6 +55,9 @@ export default function GlobalAddPage() {
   const [searching, setSearching] = useState(false)
   const [picked, setPicked] = useState(false) // 구글에서 골라 자동 채움됨
   const [coords, setCoords] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+  const [searchError, setSearchError] = useState<string | null>(null) // 검색 실패/네트워크 오류
+  const [noResults, setNoResults] = useState(false)                    // 정상 응답인데 결과 0건
+  const [suggestedName, setSuggestedName] = useState<string | null>(null) // 구글 한국어 표기(이름 제안)
   // 자동완성↔상세를 한 세션으로 묶는 토큰. 선택 후 비워 다음 검색은 새 토큰을 쓴다.
   const sessionToken = useRef<string | null>(null)
   // 제안을 막 선택한 직후 1회: 검색창에 이름이 채워져도 재검색·드롭다운을 띄우지 않는다.
@@ -84,20 +87,32 @@ export default function GlobalAddPage() {
     const q = search.trim()
     if (q.length < 2) {
       setSuggestions([])
+      setNoResults(false)
+      setSearchError(null)
       return
     }
     // 검색 세션이 없으면 새로 연다 (자동완성+상세를 한 토큰으로 묶어 과금 절약).
     if (!sessionToken.current) sessionToken.current = crypto.randomUUID()
     setSearching(true)
+    setSearchError(null)
+    setNoResults(false)
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(
           `/api/global/search?query=${encodeURIComponent(q)}&country=${country}&token=${sessionToken.current}`
         )
+        if (!res.ok) {
+          setSuggestions([])
+          setSearchError('검색 실패 — 잠시 후 다시 시도하거나 아래에 직접 입력해주세요.')
+          return
+        }
         const json = await res.json().catch(() => ({}))
-        setSuggestions(json.suggestions ?? [])
+        const list: PlaceSuggestion[] = json.suggestions ?? []
+        setSuggestions(list)
+        setNoResults(list.length === 0)
       } catch {
         setSuggestions([])
+        setSearchError('네트워크 오류 — 연결을 확인하거나 아래에 직접 입력해주세요.')
       } finally {
         setSearching(false)
       }
@@ -109,7 +124,11 @@ export default function GlobalAddPage() {
   const pickSuggestion = async (s: PlaceSuggestion) => {
     justPicked.current = true // 아래 setSearch로 인한 재검색을 막는다
     setSuggestions([])
+    setSearchError(null)
+    setNoResults(false)
     setSearch(s.mainText)
+    // 구글이 languageCode:'ko'로 준 표기 → 한글명(이름) 칸에 칩으로 제안.
+    setSuggestedName(s.mainText.trim() || null)
     try {
       const res = await fetch(
         `/api/global/place?placeId=${encodeURIComponent(s.providerId)}&country=${country}&token=${sessionToken.current ?? ''}`
@@ -213,6 +232,9 @@ export default function GlobalAddPage() {
                 setPicked(false)
                 setCoords({ lat: null, lng: null })
                 setAttrOn({})
+                setSearchError(null)
+                setNoResults(false)
+                setSuggestedName(null)
                 sessionToken.current = null
               }}
               className="flex-1 py-2.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700"
@@ -302,10 +324,14 @@ export default function GlobalAddPage() {
                   ))}
                 </ul>
               )}
-              {searching ? (
+              {searchError ? (
+                <p className="text-[11px] text-red-500 mt-1">{searchError}</p>
+              ) : searching ? (
                 <p className="text-[11px] text-gray-400 mt-1">검색 중…</p>
               ) : picked ? (
                 <p className="text-[11px] text-emerald-600 mt-1">✓ 현지어 원문·주소·좌표를 불러왔습니다. 아래 <b>한글명</b>에 한국인들이 부르는 이름을 입력해주세요.</p>
+              ) : noResults ? (
+                <p className="text-[11px] text-amber-600 mt-1">검색 결과가 없습니다 — 이름을 바꿔보거나 아래에 직접 입력하세요.</p>
               ) : (
                 <p className="text-[11px] text-gray-400 mt-1">
                   한국어로는 잘 안 잡힙니다 — 가게의 영어/현지어 이름으로 검색하세요. 직접 입력도 가능합니다.
@@ -360,6 +386,16 @@ export default function GlobalAddPage() {
             <div className="space-y-2">
               <p className="text-xs font-bold text-gray-900">④ 장소 정보</p>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="이름 (필수, 한국어/통용 표기)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
+              {suggestedName && suggestedName !== name && (
+                <button
+                  type="button"
+                  onClick={() => { setName(suggestedName); setSuggestedName(null) }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-full border"
+                  style={{ borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }}
+                >
+                  🔤 한글명 제안: {suggestedName} <span className="text-gray-400">— 적용</span>
+                </button>
+              )}
               <input value={nameLocal} onChange={(e) => setNameLocal(e.target.value)} placeholder="현지어 원문 (선택, 예: リカーマウンテン)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
               <input
                 value={region}
