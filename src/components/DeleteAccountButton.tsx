@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/src/lib/supabase-browser'
 
 const CONFIRM_WORD = '탈퇴'
@@ -19,6 +20,10 @@ export default function DeleteAccountButton({ className = '' }: { className?: st
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  // Portal은 클라이언트에서만 (SSR 시 document 없음)
+  useEffect(() => setMounted(true), [])
 
   const close = () => {
     if (busy) return
@@ -56,9 +61,9 @@ export default function DeleteAccountButton({ className = '' }: { className?: st
         회원 탈퇴
       </button>
 
-      {open && (
+      {open && mounted && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-5"
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 px-5"
           onClick={close}
           role="dialog"
           aria-modal="true"
@@ -109,7 +114,8 @@ export default function DeleteAccountButton({ className = '' }: { className?: st
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )
