@@ -529,12 +529,24 @@ export default function NaverMap() {
   const loadPCProfileExtra = useCallback(async (userId: string) => {
     setIsLoadingPCExtra(true)
     try {
-      const [placesRes, favsRes] = await Promise.all([
+      const [placesRes, favIdsRes] = await Promise.all([
         supabase.from('places').select('id, name, address, type, created_at').eq('submitted_by', userId).order('created_at', { ascending: false }),
-        supabase.from('favorites').select('place_id, places(id, name, address, type)').eq('user_id', userId),
+        supabase.from('favorites').select('place_id').eq('user_id', userId),
       ])
       if (placesRes.data) setPcPlaces(placesRes.data as PCPlace[])
-      if (favsRes.data)   setPcFavoritesList(favsRes.data as unknown as PCFavorite[])
+      if (favIdsRes.error) console.error('[PC profile] favorites 조회 실패:', favIdsRes.error)
+      // 즐겨찾기는 임베드 조인(favorites→places) 대신 ID로 분리 조회 — 조인 관계 모호성으로
+      // 빈 결과가 나오는 문제 방어. ID 목록 → places를 in()으로 한 번에.
+      const favIds = (favIdsRes.data ?? []).map((f) => f.place_id)
+      if (favIds.length === 0) {
+        setPcFavoritesList([])
+      } else {
+        const favPlacesRes = await supabase.from('places').select('id, name, address, type').in('id', favIds)
+        if (favPlacesRes.error) console.error('[PC profile] favorite places 조회 실패:', favPlacesRes.error)
+        setPcFavoritesList(
+          (favPlacesRes.data ?? []).map((p) => ({ place_id: p.id, places: p as PCFavorite['places'] }))
+        )
+      }
     } catch { /* 무시 */ }
     finally { setIsLoadingPCExtra(false) }
   }, [supabase])
