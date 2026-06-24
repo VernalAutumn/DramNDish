@@ -15,7 +15,7 @@ export async function GET() {
     return NextResponse.json({ authenticated: false })
   }
 
-  const [placesRes, reviewsRes, logsRes, photosRes] = await Promise.all([
+  const [placesRes, reviewsRes, logsRes, photosRes, favoritesRes] = await Promise.all([
     client
       .from('places')
       .select('id, name, type, country, region, created_at')
@@ -40,12 +40,23 @@ export async function GET() {
       .select('id, url, caption, created_at, place:places(id, name, type)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
+    client
+      .from('favorites')
+      .select('created_at, place:places(id, name, type, country, region)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false }),
   ])
 
   if (placesRes.error) console.error('[global me] places', placesRes.error)
   if (reviewsRes.error) console.error('[global me] reviews', reviewsRes.error)
   if (logsRes.error) console.error('[global me] logs', logsRes.error)
   if (photosRes.error) console.error('[global me] photos', photosRes.error)
+  if (favoritesRes.error) console.error('[global me] favorites', favoritesRes.error)
+
+  // favorites는 place 임베드만 평탄화해 내려준다 (즐겨찾기 하위탭에서 카드로 표시).
+  const favorites = (favoritesRes.data ?? [])
+    .map((f) => (Array.isArray(f.place) ? f.place[0] : f.place))
+    .filter(Boolean)
 
   return NextResponse.json({
     authenticated: true,
@@ -57,5 +68,7 @@ export async function GET() {
     bottleLogsFailed: !!logsRes.error,
     photos: photosRes.data ?? [],
     photosFailed: !!photosRes.error,
+    favorites,
+    favoritesFailed: !!favoritesRes.error,
   })
 }

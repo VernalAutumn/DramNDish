@@ -50,9 +50,16 @@ interface MyPhoto {
   caption: string | null
   place: { id: string; name: string; type: string } | null
 }
+interface MyFavorite {
+  id: string
+  name: string
+  type: string
+  country: string
+  region: string | null
+}
 
 type Status = 'loading' | 'unauth' | 'ready' | 'error'
-type Tab = 'places' | 'reviews' | 'photos' | 'bottles'
+type Tab = 'favorites' | 'places' | 'reviews' | 'photos' | 'bottles'
 
 const PURCHASE_CONTEXTS = ['shop_purchase', 'distillery_direct', 'distillery_tasting']
 
@@ -71,7 +78,8 @@ export default function GlobalMyRecords({
 }) {
   const supabase = createClient()
   const [status, setStatus] = useState<Status>('loading')
-  const [tab, setTab] = useState<Tab>('places')
+  const [tab, setTab] = useState<Tab>('favorites')
+  const [favorites, setFavorites] = useState<MyFavorite[]>([])
   const [places, setPlaces] = useState<MyPlace[]>([])
   const [reviews, setReviews] = useState<MyReview[]>([])
   const [logs, setLogs] = useState<MyLog[]>([])
@@ -90,6 +98,7 @@ export default function GlobalMyRecords({
         setStatus('unauth')
         return
       }
+      setFavorites(json.favorites ?? [])
       setPlaces(json.places ?? [])
       setReviews(json.reviews ?? [])
       setLogs(json.bottleLogs ?? [])
@@ -170,6 +179,7 @@ export default function GlobalMyRecords({
   }
 
   const TABS: { key: Tab; label: string; count: number }[] = [
+    { key: 'favorites', label: '즐겨찾기', count: favorites.length },
     { key: 'places', label: '장소', count: places.length },
     { key: 'reviews', label: '리뷰', count: reviews.length },
     { key: 'photos', label: '사진', count: allPhotos.length },
@@ -275,6 +285,30 @@ export default function GlobalMyRecords({
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-4">
+            {tab === 'favorites' &&
+              (favorites.length === 0 ? (
+                <Empty msg="즐겨찾기한 장소가 없습니다. 장소 상세에서 ☆을 눌러 추가하세요." />
+              ) : (
+                <ul className="space-y-2">
+                  {favorites.map((p) => (
+                    <li key={p.id}>
+                      <button onClick={() => goPlace(p.id)} className="w-full text-left border border-gray-100 rounded-xl px-3.5 py-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-gray-900">{p.name}</span>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: '#f3f4f6', color: '#4b5563' }}>
+                            {GLOBAL_TYPE_LABEL[p.type] ?? p.type}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {countryLabel(p.country)}
+                          {p.region ? ` · ${p.region}` : ''}
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ))}
+
             {tab === 'places' &&
               (places.length === 0 ? (
                 <Empty msg="등록한 장소가 없습니다." cta="장소 등록하기" onCta={onAddPlace} />

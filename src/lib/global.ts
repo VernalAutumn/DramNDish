@@ -86,6 +86,13 @@ export const COUNTRY_LABEL: Record<string, string> = {
   US: '미국',
 }
 
+export const COUNTRY_FLAG: Record<string, string> = {
+  JP: '🇯🇵',
+  TW: '🇹🇼',
+  UK: '🇬🇧',
+  US: '🇺🇸',
+}
+
 export const BOTTLE_CONTEXT_LABEL: Record<string, string> = {
   shop_purchase: '매장 구매',
   distillery_direct: '증류소 구매',

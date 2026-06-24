@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import GlobalPlaceDetail from './GlobalPlaceDetail'
 import GlobalMyRecords from './GlobalMyRecords'
-import { GlobalPlace, GLOBAL_TYPE_LABEL, COUNTRY_LABEL, countryLabel } from '@/src/lib/global'
+import { GlobalPlace, GLOBAL_TYPE_LABEL, COUNTRY_LABEL, COUNTRY_FLAG, countryLabel } from '@/src/lib/global'
 import { EMBED_KEY, placeEmbedSrc, embedCountrySrc } from '@/src/lib/google-embed'
 
 // dramndish Global(해외) 탐색 화면 — §8.1 구조 (국내 NaverMap 방식 참고).
@@ -23,6 +23,18 @@ const TYPE_FILTERS = [
   { key: 'restaurant', label: '음식점' },
   { key: 'distillery', label: '증류소' },
 ] as const
+
+// 속성 필터 (다중 선택, AND). 카드 뱃지(attrBadges)와 같은 기준.
+// 현재 목록에 실제로 존재하는 속성만 칩으로 노출 → 유형 선택과 자연히 연동된다
+// (예: 바만 보면 면세/시음 칩은 사라지고 금연만 남음).
+type AttrMatch = (a: Record<string, unknown>) => boolean
+const ATTR_FILTERS: { key: string; label: string; match: AttrMatch }[] = [
+  { key: 'tax_free', label: '면세', match: (a) => a.tax_free === true },
+  { key: 'has_tasting', label: '시음', match: (a) => a.has_tasting === true },
+  { key: 'handfill', label: '핸드필', match: (a) => a.has_handfill === true || a.handfill === true },
+  { key: 'booking_required', label: '예약 필수', match: (a) => a.booking_required === true },
+  { key: 'no_smoking', label: '금연', match: (a) => a.smoking === false },
+]
 
 // 장소 카드 — 목록·즐겨찾기 탭 공용
 function PlaceCard({
@@ -99,8 +111,6 @@ export default function GlobalExplorer() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // 지도가 보는 장소 — 상세 열림/닫힘과 분리. X로 상세를 닫아도 지도는 유지(리셋·깜빡임 방지).
   const [mapPlaceId, setMapPlaceId] = useState<string | null>(null)
-  const [showMe, setShowMe] = useState(false) // 모바일: 내 기록 풀스크린 토글
-  const [meCollapsed, setMeCollapsed] = useState(true) // 데스크탑: 우측 상시 표시, 기본 접힘(계정 헤더만)
 
   // 리스트에서 장소 선택 — 상세는 토글, 지도는 그 장소를 잡고 유지(닫아도 안 바뀜)
   const pickPlace = (id: string) => {
@@ -121,11 +131,25 @@ export default function GlobalExplorer() {
   const [country, setCountry] = useState(COUNTRIES[0] ?? 'JP')
   const [type, setType] = useState('all')
   const [q, setQ] = useState('')
+  const [region, setRegion] = useState<string | null>(null) // 도시 칩 (단일 선택)
+  const [activeAttrs, setActiveAttrs] = useState<string[]>([]) // 속성 칩 (다중, AND)
 
-  // 목록 / 즐겨찾기 탭 (국내판 패턴). 본격 모아보기는 마이페이지(§8.5)에서.
-  const [mainTab, setMainTab] = useState<'list' | 'favorites'>('list')
-  const [favIds, setFavIds] = useState<string[]>([])
-  const [favState, setFavState] = useState<'loading' | 'ready' | 'unauth' | 'error'>('loading')
+  // 유형/국가를 바꾸면 하위 필터(도시·속성)는 초기화 — 안 그러면 빈 결과로 오인.
+  const resetSubFilters = () => {
+    setRegion(null)
+    setActiveAttrs([])
+  }
+  const toggleAttr = (key: string) =>
+    setActiveAttrs((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+  // 유형 칩: 같은 걸 다시 누르면 '전체'로 해제 (기본값 복귀).
+  const pickType = (key: string) => {
+    setType((prev) => (prev === key && key !== 'all' ? 'all' : key))
+    resetSubFilters()
+  }
+
+  // 목록 / 마이페이지 탭. 즐겨찾기는 마이페이지(GlobalMyRecords) 하위탭으로 흡수.
+  const [mainTab, setMainTab] = useState<'list' | 'mypage'>('list')
+  const [filtersOpen, setFiltersOpen] = useState(true) // 필터 칩 접기/펴기
 
   // 선택한 국가의 장소만 불러온다 (전체 동시 로딩 안 함 → 리소스 절약).
   const load = useCallback(async () => {
@@ -150,44 +174,40 @@ export default function GlobalExplorer() {
     load()
   }, [load])
 
-  // 즐겨찾기 탭 진입 시마다 새로 조회 (상세 패널에서 토글한 변경 반영)
-  useEffect(() => {
-    if (mainTab !== 'favorites') return
-    let alive = true
-    setFavState('loading')
-    fetch('/api/global/favorites')
-      .then((r) => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then((j) => {
-        if (!alive) return
-        if (!j.authenticated) {
-          setFavState('unauth')
-          return
-        }
-        setFavIds(j.placeIds ?? [])
-        setFavState('ready')
-      })
-      .catch(() => {
-        if (alive) setFavState('error')
-      })
-    return () => {
-      alive = false
-    }
-  }, [mainTab])
-
   // 지도에 핀으로 보여줄 장소 — mapPlaceId 기준(상세를 닫아도 유지됨)
   const mapPlace = useMemo(
     () => places.find((p) => p.id === mapPlaceId) ?? null,
     [places, mapPlaceId]
   )
 
+  // 유형까지만 적용한 집합 — 도시/속성 칩 후보를 이 집합 기준으로 뽑는다.
+  const typeFiltered = useMemo(
+    () => (type === 'all' ? places : places.filter((p) => p.type === type)),
+    [places, type]
+  )
+
+  // 현재(유형 적용) 목록에 실제로 존재하는 속성만 칩으로 노출.
+  const availAttrs = useMemo(
+    () => ATTR_FILTERS.filter((f) => typeFiltered.some((p) => f.match(p.attributes ?? {}))),
+    [typeFiltered]
+  )
+
+  // 도시(region) 후보 — 현재 목록의 고유 지역.
+  const cities = useMemo(
+    () =>
+      Array.from(new Set(typeFiltered.map((p) => p.region).filter(Boolean))).sort() as string[],
+    [typeFiltered]
+  )
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    return places.filter((p) => {
-      // 국가는 이미 서버에서 걸러져 옴 — 여기선 유형·검색어만.
-      if (type !== 'all' && p.type !== type) return false
+    return typeFiltered.filter((p) => {
+      // 국가·유형은 이미 적용됨 — 여기선 도시·속성·검색어.
+      if (region && p.region !== region) return false
+      for (const key of activeAttrs) {
+        const f = ATTR_FILTERS.find((x) => x.key === key)
+        if (f && !f.match(p.attributes ?? {})) return false
+      }
       if (
         needle &&
         ![p.name, p.name_local, p.region, p.address]
@@ -197,13 +217,11 @@ export default function GlobalExplorer() {
         return false
       return true
     })
-  }, [places, country, type, q])
+  }, [typeFiltered, region, activeAttrs, q])
 
-  // 즐겨찾기 탭: 추가순 정렬 유지 (필터 미적용 — 내가 찜한 건 전부 보이게)
-  const favoritePlaces = useMemo(() => {
-    const byId = new Map(places.map((p) => [p.id, p]))
-    return favIds.map((id) => byId.get(id)).filter(Boolean) as GlobalPlace[]
-  }, [favIds, places])
+  // 접힘 상태 토글에 표시할 활성 필터 개수 (유형 비'전체' + 속성 + 도시)
+  const activeFilterCount =
+    (type !== 'all' ? 1 : 0) + activeAttrs.length + (region ? 1 : 0)
 
   const selected = selectedId != null
 
@@ -300,12 +318,12 @@ export default function GlobalExplorer() {
         ].join(' ')}
       >
         <div className="w-full h-full flex flex-col overflow-hidden bg-white md:border-r md:border-border-default">
-          {/* 목록 / 즐겨찾기 탭 (국내판 패턴) */}
+          {/* 목록 / 마이페이지 탭 */}
           <div className="flex border-b border-border-default flex-shrink-0">
             {(
               [
                 { key: 'list', label: '목록' },
-                { key: 'favorites', label: '즐겨찾기' },
+                { key: 'mypage', label: '마이페이지' },
               ] as const
             ).map(({ key, label }) => (
               <button
@@ -323,25 +341,35 @@ export default function GlobalExplorer() {
             ))}
           </div>
 
-          {/* 상단 바: 국가 선택 · 검색 · 필터 (목록 탭 전용) */}
+          {/* 상단 바: 국가(국기)·검색·유형·속성·도시 필터 (목록 탭 전용) */}
           {mainTab === 'list' && (
           <div className="px-4 pt-3 pb-2 border-b border-border-default flex-shrink-0 space-y-2">
+            {/* 국가 국기 칩 + 검색 */}
             <div className="flex gap-2">
-              <select
-                value={country}
-                onChange={(e) => {
-                  setCountry(e.target.value)
-                  setSelectedId(null) // 다른 국가로 바꾸면 선택 해제
-                  setMapPlaceId(null) // 지도도 국가 개요로 (이때만 리셋)
-                }}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
-              >
+              <div className="flex gap-1 flex-shrink-0">
                 {COUNTRIES.map((c) => (
-                  <option key={c} value={c}>
-                    {countryLabel(c)}
-                  </option>
+                  <button
+                    key={c}
+                    onClick={() => {
+                      if (c === country) return
+                      setCountry(c)
+                      setSelectedId(null) // 다른 국가로 바꾸면 선택 해제
+                      setMapPlaceId(null) // 지도도 국가 개요로 (이때만 리셋)
+                      resetSubFilters()   // 도시·속성 필터 초기화
+                    }}
+                    title={countryLabel(c)}
+                    aria-pressed={country === c}
+                    className="text-sm px-2 py-1 rounded-lg border leading-none transition-all"
+                    style={
+                      country === c
+                        ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.09)' }
+                        : { borderColor: '#e5e7eb', background: '#fff', opacity: 0.55 }
+                    }
+                  >
+                    {COUNTRY_FLAG[c] ?? c}
+                  </button>
                 ))}
-              </select>
+              </div>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -349,69 +377,120 @@ export default function GlobalExplorer() {
                 className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
               />
             </div>
-            <div className="flex gap-1 flex-wrap">
-              {TYPE_FILTERS.map(({ key, label }) => (
+
+            {/* 유형 칩 + 세부 필터 접기 토글 (같은 가로축) */}
+            <div className="flex items-center gap-1">
+              <div className="flex gap-1 flex-wrap flex-1">
+                {TYPE_FILTERS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => pickType(key)}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded-full border"
+                    style={
+                      type === key
+                        ? {
+                            background: 'rgba(191,58,33,0.09)',
+                            borderColor: 'var(--color-brand-primary)',
+                            color: 'var(--color-brand-primary)',
+                          }
+                        : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {(availAttrs.length > 0 || cities.length > 1) && (
                 <button
-                  key={key}
-                  onClick={() => setType(key)}
-                  className="text-[11px] font-medium px-2.5 py-1 rounded-full border"
+                  onClick={() => setFiltersOpen((v) => !v)}
+                  aria-pressed={filtersOpen}
+                  title="세부 필터 접기/펴기"
+                  className="flex-shrink-0 text-[11px] font-medium px-2 py-1 rounded-full border"
                   style={
-                    type === key
-                      ? {
-                          background: 'rgba(191,58,33,0.09)',
-                          borderColor: 'var(--color-brand-primary)',
-                          color: 'var(--color-brand-primary)',
-                        }
+                    activeFilterCount > 0
+                      ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
                       : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
                   }
                 >
-                  {label}
+                  필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''} {filtersOpen ? '▴' : '▾'}
                 </button>
-              ))}
+              )}
             </div>
+
+            {filtersOpen && (availAttrs.length > 0 || cities.length > 1) && (
+            <>
+            {/* 속성 칩 (다중, AND) — 현재 목록에 존재하는 속성만 노출 */}
+            {availAttrs.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {availAttrs.map(({ key, label }) => {
+                  const on = activeAttrs.includes(key)
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleAttr(key)}
+                      aria-pressed={on}
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-full border"
+                      style={
+                        on
+                          ? { background: '#eef2ff', borderColor: '#4338ca', color: '#4338ca' }
+                          : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+                      }
+                    >
+                      {on ? '✓ ' : ''}{label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 도시 칩 (단일 선택) — 현재 목록의 지역 */}
+            {cities.length > 1 && (
+              <div className="flex gap-1 flex-wrap">
+                {cities.map((c) => {
+                  const on = region === c
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => setRegion(on ? null : c)}
+                      aria-pressed={on}
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-full border"
+                      style={
+                        on
+                          ? {
+                              background: 'rgba(191,58,33,0.09)',
+                              borderColor: 'var(--color-brand-primary)',
+                              color: 'var(--color-brand-primary)',
+                            }
+                          : { borderColor: '#e5e7eb', color: '#6b7280', background: '#fff' }
+                      }
+                    >
+                      📍 {c}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            </>
+            )}
           </div>
           )}
 
-          {/* 목록 본문 — §9 상태별 명시 렌더 */}
-          <div className="flex-1 overflow-y-auto">
-            {/* 즐겨찾기 탭 */}
-            {mainTab === 'favorites' && (
-              <>
-                {favState === 'loading' && (
-                  <p className="text-sm text-gray-500 py-12 text-center">불러오는 중…</p>
-                )}
-                {favState === 'unauth' && (
-                  <p className="text-sm text-gray-500 py-12 px-5 text-center">
-                    로그인하면 즐겨찾기한 장소를 모아볼 수 있습니다.
-                  </p>
-                )}
-                {favState === 'error' && (
-                  <p className="text-sm text-gray-500 py-12 px-5 text-center">
-                    즐겨찾기를 불러오지 못했습니다.
-                  </p>
-                )}
-                {favState === 'ready' &&
-                  (favoritePlaces.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-12 px-5 text-center">
-                      즐겨찾기한 장소가 아직 없습니다. 장소 상세에서 ☆을 눌러 추가하세요.
-                    </p>
-                  ) : (
-                    <ul className="px-3 py-2 space-y-2">
-                      {favoritePlaces.map((p) => (
-                        <li key={p.id}>
-                          <PlaceCard
-                            p={p}
-                            active={p.id === selectedId}
-                            onClick={() => pickPlace(p.id)}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  ))}
-              </>
-            )}
+          {/* 마이페이지 탭 — GlobalMyRecords가 자체 스크롤·하위탭(즐겨찾기·장소·리뷰·사진·바틀) 관리 */}
+          {mainTab === 'mypage' && (
+            <div className="flex-1 overflow-hidden">
+              <GlobalMyRecords
+                onPlaceClick={(id) => {
+                  setSelectedId(id)
+                  setMapPlaceId(id)
+                }}
+                onAddPlace={() => router.push('/global/add')}
+              />
+            </div>
+          )}
 
-            {mainTab === 'list' && (
+          {/* 목록 본문 — §9 상태별 명시 렌더 */}
+          {mainTab === 'list' && (
+          <div className="flex-1 overflow-y-auto">
             <>
             {status === 'loading' && (
               <p className="text-sm text-gray-500 py-12 text-center">불러오는 중…</p>
@@ -461,9 +540,10 @@ export default function GlobalExplorer() {
                     <p className="text-sm text-gray-500">조건에 맞는 결과가 없습니다.</p>
                     <button
                       onClick={() => {
-                        // 국가는 1개씩 보는 기본 내비라 유지. 유형·검색어만 초기화.
+                        // 국가는 1개씩 보는 기본 내비라 유지. 유형·속성·도시·검색어 초기화.
                         setType('all')
                         setQ('')
+                        resetSubFilters()
                       }}
                       className="mt-3 text-xs font-medium underline"
                       style={{ color: 'var(--color-brand-primary)' }}
@@ -487,10 +567,10 @@ export default function GlobalExplorer() {
               </>
             )}
             </>
-            )}
           </div>
+          )}
 
-          {/* 패널 푸터: 장소 등록(§8.6). 내 기록은 우측 상시 패널로 분리됨. */}
+          {/* 패널 푸터: 장소 등록(§8.6) */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border-default flex-shrink-0 bg-white">
             <button
               onClick={() => router.push('/global/add')}
@@ -498,13 +578,6 @@ export default function GlobalExplorer() {
               style={{ background: 'var(--color-brand-primary)' }}
             >
               + 장소 등록
-            </button>
-            {/* 모바일에서만 내 기록 진입 (데스크탑은 우측 상시) */}
-            <button
-              onClick={() => setShowMe(true)}
-              className="md:hidden px-4 py-2.5 text-xs font-semibold rounded-lg border border-border-default text-gray-600"
-            >
-              내 기록
             </button>
           </div>
         </div>
@@ -524,41 +597,6 @@ export default function GlobalExplorer() {
           ].join(' ')}
         >
           <GlobalPlaceDetail placeId={selectedId!} onClose={() => setSelectedId(null)} />
-        </div>
-      )}
-
-      {/* ── 내 기록 — 데스크탑은 화면 우측 끝에 상시 표시 (리스트=좌, 내 기록=우) ──
-          국내판처럼 버튼 없이 기본 노출. 접기(×) 시 우측에 작은 복원 칩만 남는다.
-          상세 패널(리스트 옆 중앙)과 반대편이라 겹치지 않는다. */}
-      <div className={`hidden md:flex absolute z-30 top-4 right-4 w-[380px] ${meCollapsed ? '' : 'bottom-4'}`}>
-        {meCollapsed ? (
-          <GlobalMyRecords collapsed onToggle={() => setMeCollapsed(false)} />
-        ) : (
-          <div className="panel w-full h-full overflow-hidden rounded-2xl bg-white shadow-xl">
-            <GlobalMyRecords
-              onPlaceClick={(id) => {
-                setSelectedId(id)
-                setMapPlaceId(id)
-              }}
-              onAddPlace={() => router.push('/global/add')}
-              onToggle={() => setMeCollapsed(true)}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* 모바일: 풀스크린 토글 */}
-      {showMe && (
-        <div className="md:hidden fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+48px)] z-40 bg-white">
-          <GlobalMyRecords
-            onPlaceClick={(id) => {
-              setShowMe(false)
-              setSelectedId(id)
-              setMapPlaceId(id)
-            }}
-            onAddPlace={() => router.push('/global/add')}
-            onClose={() => setShowMe(false)}
-          />
         </div>
       )}
     </div>
