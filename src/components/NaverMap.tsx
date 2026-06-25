@@ -352,9 +352,11 @@ export default function NaverMap() {
   const [isReacting,     setIsReacting]     = useState(false)
 
   // ─── state: 우측 컨트롤 패널 ─────────────────────────────────────────────
-  const [showProfileCard,  setShowProfileCard]  = useState(false)
   const [showPasswordText, setShowPasswordText] = useState(false)
   const [showFilterCard,   setShowFilterCard]   = useState(false)
+
+  // ─── state: 좌측 패널 최상위 탭 (PC 전용) — 목록 | 마이페이지 ─────────────
+  const [leftTab, setLeftTab] = useState<'list' | 'mypage'>('list')
 
   // ─── state: 홈 Preview Card & 모바일 플로팅 필터 ──────────────────────────
   const [homePeekPlace,    setHomePeekPlace]    = useState<Place | null>(null)
@@ -598,15 +600,15 @@ export default function NaverMap() {
     finally { setIsSavingEditPC(false) }
   }, [editNickValuePC, supabase])
 
-  // ─── 카드 열릴 때 프로필 데이터 일괄 로드 ────────────────────────────────
+  // ─── 마이페이지 탭 진입 시 프로필 데이터 일괄 로드 ──────────────────────
   useEffect(() => {
     const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
-    if (showProfileCard && currentUser && appNick) {
+    if (leftTab === 'mypage' && currentUser && appNick) {
       loadUserStats()
       loadActivity()
       loadPCProfileExtra(currentUser.id)
     }
-  }, [showProfileCard]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leftTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 태그 입력 포커스 ────────────────────────────────────────────────────
   useEffect(() => {
@@ -662,6 +664,7 @@ export default function NaverMap() {
     savedScrollPosition.current = listScrollRef.current?.scrollTop ?? 0
     setSelectedPlace(place)
     setView('detail')
+    setLeftTab('list')   // 마이페이지 탭 상태에서 마커 클릭 시 상세가 가려지지 않도록 목록 탭으로 복귀
     setSheetState('expanded')
     setActiveId(id)
     setFavCount(place.favorites_count ?? 0)
@@ -1206,7 +1209,7 @@ export default function NaverMap() {
     const content = newPanelComment.trim()
     if (!content || isSubmittingComment || !selectedPlace) return
     // 로그인 사용자는 비밀번호 불필요
-    if (!currentUser && !myCode) { setCommentPasswordError(true); setShowProfileCard(true); return }
+    if (!currentUser && !myCode) { setCommentPasswordError(true); setLeftTab('mypage'); return }
     setCommentPasswordError(false)
     setIsSubmittingComment(true)
     // 로그인 유저는 app_nickname 사용, 익명 유저는 로컬 닉네임 사용
@@ -1427,7 +1430,7 @@ export default function NaverMap() {
     // 로그인 체크 (label onClick에서 1차 차단, 여기서 2차 안전망)
     if (!currentUser) { showLoginRequired(); e.target.value = ''; return }
     // 익명 사용자는 비밀번호 필수
-    if (!currentUser && !myCode) { setPhotoPasswordError(true); setShowProfileCard(true); e.target.value = ''; return }
+    if (!currentUser && !myCode) { setPhotoPasswordError(true); setLeftTab('mypage'); e.target.value = ''; return }
     setPhotoPasswordError(false)
 
     const formData = new FormData()
@@ -2233,7 +2236,367 @@ export default function NaverMap() {
           style={{ height: 'calc(100dvh - env(safe-area-inset-top, 0px) - 64px)' }}
         >
 
+          {/* ── 최상위 탭: 목록 | 마이페이지 (PC 전용 — 패널 자체가 hidden md:flex) ── */}
+          {view !== 'detail' && (
+            <div className="flex border-b border-gray-100 flex-shrink-0">
+              {([
+                { key: 'list',   label: '목록' },
+                { key: 'mypage', label: '마이페이지' },
+              ] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setLeftTab(key)}
+                  className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
+                    leftTab === key
+                      ? 'text-[#BF3A21] border-b-2 border-[#BF3A21]'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
+          {leftTab === 'mypage' ? (
+            <div className="flex-1 overflow-y-auto">
+              {/* ── 계정 헤더 (정적) ── */}
+              <div className="flex items-center gap-2.5 px-3.5 py-3 w-full border-b border-gray-100">
+                {(() => {
+                  const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
+                  const avatarLabel = currentUser
+                    ? (appNick ? appNick[0].toUpperCase() : '?')
+                    : (myNickname ? myNickname[0].toUpperCase() : null)
+                  const avatarBg = currentUser ? MARKER_COLOR : (myNickname ? MARKER_COLOR : '#d1d5db')
+                  return (
+                    <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-bold"
+                         style={{ backgroundColor: avatarBg }}>
+                      {avatarLabel ?? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                      )}
+                    </div>
+                  )
+                })()}
+                <div className="flex-1 text-left min-w-0">
+                  {currentUser ? (() => {
+                    const appNick = currentUser.user_metadata?.app_nickname as string | undefined
+                    return appNick ? (
+                      <>
+                        <p className="text-xs font-bold text-gray-800 truncate leading-tight">{appNick}</p>
+                        <p className="text-[11px] text-gray-400 leading-tight mt-0.5">마이페이지</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs font-bold text-amber-600 truncate leading-tight">닉네임 설정 필요</p>
+                        <p className="text-[11px] text-gray-400 leading-tight mt-0.5">Google 로그인 완료</p>
+                      </>
+                    )
+                  })() : (
+                    <>
+                      <p className="text-xs font-bold text-gray-800 truncate leading-tight">
+                        {myNickname || <span className="text-gray-400 font-normal">닉네임 설정 안 됨</span>}
+                      </p>
+                      <p className="text-[11px] text-gray-400 leading-tight mt-0.5">
+                        {myCode ? '🔒 비밀번호 설정됨' : '⚠︎ 비밀번호 미설정'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ── 본문 ── */}
+              <div className="px-3 py-3">
+
+              {/* ══ 케이스 A: 비로그인 ══ 익명 닉네임/비밀번호 + 구글 로그인 버튼 */}
+              {!currentUser && (
+                <div className="space-y-2">
+                  {/* 닉네임 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400 w-14 shrink-0">닉네임</span>
+                    <input
+                      type="text"
+                      value={myNickname ?? ''}
+                      onChange={(e) => { setMyNickname(e.target.value); localStorage.setItem('tastamp_nickname', e.target.value) }}
+                      placeholder="익명"
+                      maxLength={20}
+                      className="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none transition-colors focus:border-gray-400"
+                    />
+                  </div>
+                  {/* 비밀번호 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400 w-14 shrink-0">비밀번호</span>
+                    <div className="flex-1 relative min-w-0">
+                      <input
+                        type={showPasswordText ? 'text' : 'password'}
+                        value={myCode}
+                        onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false) } }}
+                        placeholder="콘텐츠 삭제 시 사용"
+                        maxLength={20}
+                        className={`w-full text-sm border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordText((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        {showPasswordText ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-300 leading-relaxed">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
+                  {/* 구분선 + 구글 로그인 */}
+                  <div className="pt-1 border-t border-gray-100">
+                    <p className="text-[11px] text-gray-400 text-center mb-2">또는 계정으로 로그인</p>
+                    <button
+                      onClick={handleGoogleLogin}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold text-gray-700 bg-gray-50 border border-gray-200 hover:bg-white hover:shadow-sm active:scale-[0.98] transition-all"
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      </svg>
+                      Google로 로그인
+                    </button>
+                    {/* 법적 고지 */}
+                    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
+                      본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
+                      주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
+                      <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-gray-600 transition-colors">이용약관</a>
+                      {' · '}
+                      <a href="https://tender-omelet-de8.notion.site/Privacy-Policy-34c39f83940e801389e6e957be1dfdd6?source=copy_link"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-gray-600 transition-colors">개인정보처리방침</a>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ══ 케이스 B: 로그인 + 닉네임 미설정 ══ → 모달로 분리, 여기엔 간단한 안내만 */}
+              {currentUser && !(currentUser.user_metadata?.app_nickname as string | undefined) && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-amber-600 font-semibold">닉네임 설정이 필요합니다</p>
+                  <button
+                    onClick={() => setShowNicknameModal(true)}
+                    className="w-full py-2 rounded-xl text-sm font-bold text-white active:scale-[0.98] transition-all"
+                    style={{ backgroundColor: MARKER_COLOR }}
+                  >
+                    닉네임 설정하기
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-[11px] text-gray-400 hover:text-red-500 transition-colors py-0.5"
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              )}
+
+              {/* ══ 케이스 C: 로그인 완료 (닉네임 설정됨) ══ 대시보드 */}
+              {currentUser && !!(currentUser.user_metadata?.app_nickname as string | undefined) && (
+                <div className="space-y-1">
+
+                  {/* 닉네임 수정 영역 */}
+                  <div className="pb-2">
+                    {isEditingNickPC ? (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={editNickValuePC}
+                            onChange={(e) => { setEditNickValuePC(e.target.value); setEditNickErrorPC('') }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleUpdateNicknamePC()
+                              if (e.key === 'Escape') { setIsEditingNickPC(false); setEditNickErrorPC('') }
+                            }}
+                            maxLength={20}
+                            autoFocus
+                            placeholder="새 닉네임 (최대 20자)"
+                            className="flex-1 min-w-0 text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#BF3A21] bg-white transition-colors"
+                          />
+                          <button
+                            onClick={handleUpdateNicknamePC}
+                            disabled={isSavingEditPC}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50 transition-all"
+                            style={{ backgroundColor: MARKER_COLOR }}
+                          >
+                            {isSavingEditPC ? '…' : '저장'}
+                          </button>
+                          <button
+                            onClick={() => { setIsEditingNickPC(false); setEditNickErrorPC('') }}
+                            disabled={isSavingEditPC}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 transition-all"
+                          >
+                            취소
+                          </button>
+                        </div>
+                        {editNickErrorPC && (
+                          <p className="text-xs text-red-500 pl-0.5">{editNickErrorPC}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const appNick = currentUser.user_metadata?.app_nickname as string | undefined
+                          setEditNickValuePC(appNick ?? '')
+                          setIsEditingNickPC(true)
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-100 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+                          fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        닉네임 변경
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 프로필 탭 바 */}
+                  <div className="flex border-b border-gray-100">
+                    {([
+                      { key: 'places',    label: '장소',   count: pcPlaces.length },
+                      { key: 'comments',  label: '코멘트', count: activityList.filter(i => i.type === 'comment').length },
+                      { key: 'photos',    label: '사진',   count: activityList.filter(i => i.type === 'photo').length },
+                      { key: 'favorites', label: '즐겨찾기', count: pcFavoritesList.length },
+                    ] as { key: typeof pcProfileTab; label: string; count: number }[]).map(({ key, label, count }) => (
+                      <button
+                        key={key}
+                        onClick={() => setPcProfileTab(key)}
+                        className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                          pcProfileTab === key
+                            ? 'text-[#BF3A21] border-b-2 border-[#BF3A21]'
+                            : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        {label}<span className="ml-0.5 opacity-60">({count})</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 탭 콘텐츠 */}
+                  {(isLoadingPCExtra || isLoadingActivity) ? (
+                    <p className="text-xs text-gray-400 text-center py-6">불러오는 중...</p>
+                  ) : (
+                    <div className="max-h-80 overflow-y-auto">
+                      {/* 장소 탭 */}
+                      {pcProfileTab === 'places' && (
+                        pcPlaces.length === 0
+                          ? <p className="text-xs text-gray-400 text-center py-6">등록한 장소가 없습니다.</p>
+                          : <div className="divide-y divide-gray-100">
+                              {pcPlaces.map(p => (
+                                <div
+                                  key={p.id}
+                                  onClick={() => { setLeftTab('list'); openDetail(p.id, LIST_CLICK_ZOOM) }}
+                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
+                                  <p className="text-[11px] text-gray-400 truncate mt-1">{p.address}</p>
+                                </div>
+                              ))}
+                            </div>
+                      )}
+                      {/* 코멘트 탭 */}
+                      {pcProfileTab === 'comments' && (() => {
+                        const items = activityList.filter(i => i.type === 'comment')
+                        return items.length === 0
+                          ? <p className="text-xs text-gray-400 text-center py-6">작성한 코멘트가 없습니다.</p>
+                          : <div className="divide-y divide-gray-100">
+                              {items.map(i => (
+                                <div
+                                  key={i.id}
+                                  onClick={() => { setLeftTab('list'); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
+                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                  <p className="text-[11px] text-gray-400 mb-1">📍 {i.place_name}</p>
+                                  <p className="text-xs text-gray-700 line-clamp-2">{i.content}</p>
+                                </div>
+                              ))}
+                            </div>
+                      })()}
+                      {/* 사진 탭 */}
+                      {pcProfileTab === 'photos' && (() => {
+                        const items = activityList.filter(i => i.type === 'photo')
+                        return items.length === 0
+                          ? <p className="text-xs text-gray-400 text-center py-6">등록한 사진이 없습니다.</p>
+                          : <div className="grid grid-cols-3 gap-2 p-4">
+                              {items.map(i => (
+                                <div
+                                  key={i.id}
+                                  onClick={() => { setLeftTab('list'); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
+                                  className="relative aspect-square cursor-pointer"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={i.url} alt="" className="w-full h-full object-cover rounded-lg hover:opacity-90 transition-opacity" />
+                                </div>
+                              ))}
+                            </div>
+                      })()}
+                      {/* 즐겨찾기 탭 */}
+                      {pcProfileTab === 'favorites' && (
+                        pcFavoritesList.length === 0
+                          ? <p className="text-xs text-gray-400 text-center py-6">즐겨찾기한 장소가 없습니다.</p>
+                          : <div className="divide-y divide-gray-100">
+                              {pcFavoritesList.map(f => f.places && (
+                                <div
+                                  key={f.place_id}
+                                  onClick={() => { setLeftTab('list'); openDetail(f.places!.id, LIST_CLICK_ZOOM) }}
+                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{f.places.name}</p>
+                                  <p className="text-[11px] text-gray-400 truncate mt-1">{f.places.address}</p>
+                                </div>
+                              ))}
+                            </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 구분선 + 로그아웃 */}
+                  <div>
+                    <div className="border-t border-gray-100 mb-3" />
+                    <button
+                      onClick={handleLogout}
+                      className="w-full py-2 text-sm font-semibold text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 transition-colors rounded-xl"
+                    >
+                      로그아웃
+                    </button>
+                    <DeleteAccountButton />
+                    {/* 법적 고지 */}
+                    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
+                      본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
+                      주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
+                      <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-gray-600 transition-colors">이용약관</a>
+                      {' · '}
+                      <a href="https://tender-omelet-de8.notion.site/Privacy-Policy-34c39f83940e801389e6e957be1dfdd6?source=copy_link"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-gray-600 transition-colors">개인정보처리방침</a>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              </div>
+            </div>
+          ) : (
+          <>
           {/* 목록 (즐겨찾기는 마이페이지로 통폐합 — 별도 탭 제거) */}
           {view === 'list' && (
             <>
@@ -3195,6 +3558,8 @@ export default function NaverMap() {
               </div>
             </>
           )}
+          </>
+          )}
 
         </div>
       </div>
@@ -3534,353 +3899,6 @@ export default function NaverMap() {
       {/* ── 우측 상단 통합 컨트롤 패널 (모바일: 바텀탭으로 대체하여 숨김) ── */}
       <div className="hidden md:flex absolute md:top-4 right-4 z-30 flex-col items-end gap-2 w-[320px]">
 
-        {/* 프로필 카드 – auth 상태에 따라 내부가 3단계로 변함 */}
-        <div className={`panel w-full rounded-2xl overflow-hidden transition-shadow duration-300 ${(!currentUser && (commentPasswordError || photoPasswordError)) ? 'ring-2 ring-red-500' : ''}`}
-             style={{ boxShadow: (!currentUser && (commentPasswordError || photoPasswordError)) ? '0 0 0 3px rgba(239,68,68,0.25), 0 4px 24px rgba(0,0,0,0.13)' : '0 4px 24px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.08)' }}>
-          <button
-            onClick={() => setShowProfileCard((v) => !v)}
-            className="flex items-center gap-2.5 px-3.5 py-2.5 w-full hover:bg-gray-50 transition-colors"
-          >
-            {/* 아바타 */}
-            {(() => {
-              const appNick = currentUser?.user_metadata?.app_nickname as string | undefined
-              const avatarLabel = currentUser
-                ? (appNick ? appNick[0].toUpperCase() : '?')
-                : (myNickname ? myNickname[0].toUpperCase() : null)
-              const avatarBg = currentUser ? MARKER_COLOR : (myNickname ? MARKER_COLOR : '#d1d5db')
-              return (
-                <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-bold"
-                     style={{ backgroundColor: avatarBg }}>
-                  {avatarLabel ?? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                    </svg>
-                  )}
-                </div>
-              )
-            })()}
-            <div className="flex-1 text-left min-w-0">
-              {currentUser ? (() => {
-                const appNick = currentUser.user_metadata?.app_nickname as string | undefined
-                return appNick ? (
-                  <>
-                    <p className="text-xs font-bold text-gray-800 truncate leading-tight">{appNick}</p>
-                    <p className="text-[11px] text-gray-400 leading-tight mt-0.5">마이페이지</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs font-bold text-amber-600 truncate leading-tight">닉네임 설정 필요</p>
-                    <p className="text-[11px] text-gray-400 leading-tight mt-0.5">Google 로그인 완료</p>
-                  </>
-                )
-              })() : (
-                <>
-                  <p className="text-xs font-bold text-gray-800 truncate leading-tight">
-                    {myNickname || <span className="text-gray-400 font-normal">닉네임 설정 안 됨</span>}
-                  </p>
-                  <p className="text-[11px] text-gray-400 leading-tight mt-0.5">
-                    {myCode ? '🔒 비밀번호 설정됨' : '⚠︎ 비밀번호 미설정'}
-                  </p>
-                </>
-              )}
-            </div>
-            <svg className={`shrink-0 transition-transform duration-200 ${showProfileCard ? 'rotate-180' : ''}`}
-                 xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
-                 fill="none" stroke="#9ca3af" strokeWidth="2.5">
-              <path d="M6 9l6 6 6-6"/>
-            </svg>
-          </button>
-
-          {showProfileCard && (
-            <div className="border-t border-gray-100 px-3 py-3">
-
-              {/* ══ 케이스 A: 비로그인 ══ 익명 닉네임/비밀번호 + 구글 로그인 버튼 */}
-              {!currentUser && (
-                <div className="space-y-2">
-                  {/* 닉네임 */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400 w-14 shrink-0">닉네임</span>
-                    <input
-                      type="text"
-                      value={myNickname ?? ''}
-                      onChange={(e) => { setMyNickname(e.target.value); localStorage.setItem('tastamp_nickname', e.target.value) }}
-                      placeholder="익명"
-                      maxLength={20}
-                      className="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none transition-colors focus:border-gray-400"
-                    />
-                  </div>
-                  {/* 비밀번호 */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400 w-14 shrink-0">비밀번호</span>
-                    <div className="flex-1 relative min-w-0">
-                      <input
-                        type={showPasswordText ? 'text' : 'password'}
-                        value={myCode}
-                        onChange={(e) => { const v = e.target.value.slice(0, 20); setMyCode(v); localStorage.setItem('tastamp_code', v); if (v) { setCommentPasswordError(false); setPhotoPasswordError(false) } }}
-                        placeholder="콘텐츠 삭제 시 사용"
-                        maxLength={20}
-                        className={`w-full text-sm border rounded-lg px-2.5 py-1.5 pr-7 outline-none transition-colors ${(commentPasswordError || photoPasswordError) ? 'border-red-500 focus:border-red-500' : 'border-gray-200 focus:border-gray-400'}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPasswordText((v) => !v)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                      >
-                        {showPasswordText ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                            <line x1="1" y1="1" x2="23" y2="23"/>
-                          </svg>
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-gray-300 leading-relaxed">등록한 콘텐츠 삭제 시 이 비밀번호로 인증합니다.</p>
-                  {/* 구분선 + 구글 로그인 */}
-                  <div className="pt-1 border-t border-gray-100">
-                    <p className="text-[11px] text-gray-400 text-center mb-2">또는 계정으로 로그인</p>
-                    <button
-                      onClick={handleGoogleLogin}
-                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold text-gray-700 bg-gray-50 border border-gray-200 hover:bg-white hover:shadow-sm active:scale-[0.98] transition-all"
-                    >
-                      <svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                      </svg>
-                      Google로 로그인
-                    </button>
-                    {/* 법적 고지 */}
-                    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
-                      본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
-                      주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
-                      <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
-                         target="_blank" rel="noopener noreferrer"
-                         className="underline hover:text-gray-600 transition-colors">이용약관</a>
-                      {' · '}
-                      <a href="https://tender-omelet-de8.notion.site/Privacy-Policy-34c39f83940e801389e6e957be1dfdd6?source=copy_link"
-                         target="_blank" rel="noopener noreferrer"
-                         className="underline hover:text-gray-600 transition-colors">개인정보처리방침</a>
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* ══ 케이스 B: 로그인 + 닉네임 미설정 ══ → 모달로 분리, 여기엔 간단한 안내만 */}
-              {currentUser && !(currentUser.user_metadata?.app_nickname as string | undefined) && (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-amber-600 font-semibold">닉네임 설정이 필요합니다</p>
-                  <button
-                    onClick={() => setShowNicknameModal(true)}
-                    className="w-full py-2 rounded-xl text-sm font-bold text-white active:scale-[0.98] transition-all"
-                    style={{ backgroundColor: MARKER_COLOR }}
-                  >
-                    닉네임 설정하기
-                  </button>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-[11px] text-gray-400 hover:text-red-500 transition-colors py-0.5"
-                  >
-                    로그아웃
-                  </button>
-                </div>
-              )}
-
-              {/* ══ 케이스 C: 로그인 완료 (닉네임 설정됨) ══ 대시보드 */}
-              {currentUser && !!(currentUser.user_metadata?.app_nickname as string | undefined) && (
-                <div className="space-y-1">
-
-                  {/* 닉네임 수정 영역 */}
-                  <div className="pb-2">
-                    {isEditingNickPC ? (
-                      <div className="space-y-1.5">
-                        <div className="flex gap-1.5">
-                          <input
-                            type="text"
-                            value={editNickValuePC}
-                            onChange={(e) => { setEditNickValuePC(e.target.value); setEditNickErrorPC('') }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleUpdateNicknamePC()
-                              if (e.key === 'Escape') { setIsEditingNickPC(false); setEditNickErrorPC('') }
-                            }}
-                            maxLength={20}
-                            autoFocus
-                            placeholder="새 닉네임 (최대 20자)"
-                            className="flex-1 min-w-0 text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#BF3A21] bg-white transition-colors"
-                          />
-                          <button
-                            onClick={handleUpdateNicknamePC}
-                            disabled={isSavingEditPC}
-                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50 transition-all"
-                            style={{ backgroundColor: MARKER_COLOR }}
-                          >
-                            {isSavingEditPC ? '…' : '저장'}
-                          </button>
-                          <button
-                            onClick={() => { setIsEditingNickPC(false); setEditNickErrorPC('') }}
-                            disabled={isSavingEditPC}
-                            className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 transition-all"
-                          >
-                            취소
-                          </button>
-                        </div>
-                        {editNickErrorPC && (
-                          <p className="text-xs text-red-500 pl-0.5">{editNickErrorPC}</p>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          const appNick = currentUser.user_metadata?.app_nickname as string | undefined
-                          setEditNickValuePC(appNick ?? '')
-                          setIsEditingNickPC(true)
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-100 transition-colors"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
-                          fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                        닉네임 변경
-                      </button>
-                    )}
-                  </div>
-
-                  {/* 프로필 탭 바 */}
-                  <div className="flex border-b border-gray-100">
-                    {([
-                      { key: 'places',    label: '장소',   count: pcPlaces.length },
-                      { key: 'comments',  label: '코멘트', count: activityList.filter(i => i.type === 'comment').length },
-                      { key: 'photos',    label: '사진',   count: activityList.filter(i => i.type === 'photo').length },
-                      { key: 'favorites', label: '즐겨찾기', count: pcFavoritesList.length },
-                    ] as { key: typeof pcProfileTab; label: string; count: number }[]).map(({ key, label, count }) => (
-                      <button
-                        key={key}
-                        onClick={() => setPcProfileTab(key)}
-                        className={`flex-1 py-2 text-xs font-semibold transition-colors ${
-                          pcProfileTab === key
-                            ? 'text-[#BF3A21] border-b-2 border-[#BF3A21]'
-                            : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                      >
-                        {label}<span className="ml-0.5 opacity-60">({count})</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* 탭 콘텐츠 */}
-                  {(isLoadingPCExtra || isLoadingActivity) ? (
-                    <p className="text-xs text-gray-400 text-center py-6">불러오는 중...</p>
-                  ) : (
-                    <div className="max-h-80 overflow-y-auto">
-                      {/* 장소 탭 */}
-                      {pcProfileTab === 'places' && (
-                        pcPlaces.length === 0
-                          ? <p className="text-xs text-gray-400 text-center py-6">등록한 장소가 없습니다.</p>
-                          : <div className="divide-y divide-gray-100">
-                              {pcPlaces.map(p => (
-                                <div
-                                  key={p.id}
-                                  onClick={() => { setShowProfileCard(false); openDetail(p.id, LIST_CLICK_ZOOM) }}
-                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                                >
-                                  <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
-                                  <p className="text-[11px] text-gray-400 truncate mt-1">{p.address}</p>
-                                </div>
-                              ))}
-                            </div>
-                      )}
-                      {/* 코멘트 탭 */}
-                      {pcProfileTab === 'comments' && (() => {
-                        const items = activityList.filter(i => i.type === 'comment')
-                        return items.length === 0
-                          ? <p className="text-xs text-gray-400 text-center py-6">작성한 코멘트가 없습니다.</p>
-                          : <div className="divide-y divide-gray-100">
-                              {items.map(i => (
-                                <div
-                                  key={i.id}
-                                  onClick={() => { setShowProfileCard(false); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
-                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                                >
-                                  <p className="text-[11px] text-gray-400 mb-1">📍 {i.place_name}</p>
-                                  <p className="text-xs text-gray-700 line-clamp-2">{i.content}</p>
-                                </div>
-                              ))}
-                            </div>
-                      })()}
-                      {/* 사진 탭 */}
-                      {pcProfileTab === 'photos' && (() => {
-                        const items = activityList.filter(i => i.type === 'photo')
-                        return items.length === 0
-                          ? <p className="text-xs text-gray-400 text-center py-6">등록한 사진이 없습니다.</p>
-                          : <div className="grid grid-cols-3 gap-2 p-4">
-                              {items.map(i => (
-                                <div
-                                  key={i.id}
-                                  onClick={() => { setShowProfileCard(false); openDetail(i.place_id, LIST_CLICK_ZOOM) }}
-                                  className="relative aspect-square cursor-pointer"
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={i.url} alt="" className="w-full h-full object-cover rounded-lg hover:opacity-90 transition-opacity" />
-                                </div>
-                              ))}
-                            </div>
-                      })()}
-                      {/* 즐겨찾기 탭 */}
-                      {pcProfileTab === 'favorites' && (
-                        pcFavoritesList.length === 0
-                          ? <p className="text-xs text-gray-400 text-center py-6">즐겨찾기한 장소가 없습니다.</p>
-                          : <div className="divide-y divide-gray-100">
-                              {pcFavoritesList.map(f => f.places && (
-                                <div
-                                  key={f.place_id}
-                                  onClick={() => { setShowProfileCard(false); openDetail(f.places!.id, LIST_CLICK_ZOOM) }}
-                                  className="px-2 py-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                                >
-                                  <p className="text-xs font-semibold text-gray-800 truncate">{f.places.name}</p>
-                                  <p className="text-[11px] text-gray-400 truncate mt-1">{f.places.address}</p>
-                                </div>
-                              ))}
-                            </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 구분선 + 로그아웃 */}
-                  <div>
-                    <div className="border-t border-gray-100 mb-3" />
-                    <button
-                      onClick={handleLogout}
-                      className="w-full py-2 text-sm font-semibold text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 transition-colors rounded-xl"
-                    >
-                      로그아웃
-                    </button>
-                    <DeleteAccountButton />
-                    {/* 법적 고지 */}
-                    <p className="text-[11px] text-gray-400 leading-relaxed text-center mt-2">
-                      본 서비스는 주류 관련 장소 정보도 다룹니다.<br />
-                      주류 판매·광고·중개가 목적이 아닌 개인 운영 커뮤니티입니다.<br />
-                      <a href="https://tender-omelet-de8.notion.site/Terms-of-Use-34c39f83940e809c8841ef4d6700f48f?pvs=74"
-                         target="_blank" rel="noopener noreferrer"
-                         className="underline hover:text-gray-600 transition-colors">이용약관</a>
-                      {' · '}
-                      <a href="https://tender-omelet-de8.notion.site/Privacy-Policy-34c39f83940e801389e6e957be1dfdd6?source=copy_link"
-                         target="_blank" rel="noopener noreferrer"
-                         className="underline hover:text-gray-600 transition-colors">개인정보처리방침</a>
-                    </p>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          )}
-        </div>
 
         {/* 필터 카드 */}
         <div className="panel w-full rounded-2xl overflow-hidden">
