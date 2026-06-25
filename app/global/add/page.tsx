@@ -140,6 +140,7 @@ export default function GlobalAddPage() {
         setNameLocal(p.name ?? '')
         setAddress(p.address ?? '')
         setMapsUrl(p.googleMapsUrl ?? '')
+        setOfficialUrl(p.officialUrl ?? '') // 구글 공식 사이트 자동채움
         setCoords({ lat: p.lat ?? null, lng: p.lng ?? null })
         setPicked(true)
       }
@@ -329,7 +330,7 @@ export default function GlobalAddPage() {
               ) : searching ? (
                 <p className="text-[11px] text-gray-400 mt-1">검색 중…</p>
               ) : picked ? (
-                <p className="text-[11px] text-emerald-600 mt-1">✓ 현지어 원문·주소·좌표를 불러왔습니다. 아래 <b>한글명</b>에 한국인들이 부르는 이름을 입력해주세요.</p>
+                <p className="text-[11px] text-emerald-600 mt-1">✓ 현지어 원문·주소·좌표·공식사이트를 불러왔습니다. 아래 <b>한글명</b>에 한국인들이 부르는 이름을 입력해주세요.</p>
               ) : noResults ? (
                 <p className="text-[11px] text-amber-600 mt-1">검색 결과가 없습니다 — 이름을 바꿔보거나 아래에 직접 입력하세요.</p>
               ) : (

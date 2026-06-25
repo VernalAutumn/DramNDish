@@ -25,6 +25,8 @@ export interface IPlaceStandard {
   googleMapsUrl: string | null
   /** 구글이 분류한 대표 유형 (예: 'liquor_store', 'bar') — 유형 자동 추천에 활용 */
   primaryType: string | null
+  /** 공식 사이트(websiteUri) → 폼의 official_url 자동채움 (없으면 null) */
+  officialUrl: string | null
 }
 
 // 자동완성(Autocomplete) 1건 — 드롭다운에 보여줄 최소 정보.

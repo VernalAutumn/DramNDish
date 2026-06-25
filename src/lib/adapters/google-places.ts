@@ -34,6 +34,7 @@ const DETAILS_FIELD_MASK = [
   'location',
   'googleMapsUri',
   'primaryType',
+  'websiteUri', // 공식 사이트 자동채움 (Enterprise SKU — 등록 시 1회만 호출)
 ].join(',')
 
 // ── Autocomplete 응답에서 쓰는 부분만 추린 타입 ──
@@ -57,6 +58,7 @@ interface DetailsResponse {
   location?: { latitude?: number; longitude?: number }
   googleMapsUri?: string
   primaryType?: string
+  websiteUri?: string
 }
 
 /**
@@ -146,5 +148,6 @@ export async function getGooglePlaceDetails(
     lng: p.location?.longitude ?? null,
     googleMapsUrl: p.googleMapsUri ?? null,
     primaryType: p.primaryType ?? null,
+    officialUrl: p.websiteUri ?? null,
   }
 }
