@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
 import GlobalPurchaseForm from './GlobalPurchaseForm'
+import GlobalPurchaseTips from './GlobalPurchaseTips'
 import PhotoLightbox from './PhotoLightbox'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
@@ -657,11 +658,17 @@ export default function GlobalPlaceDetail({
             <>
               {/* 증류소 한정 — 한정 보틀+투표 (B4에서 채움) */}
               <InfoRow label="증류소 한정" value={<span className="text-gray-400">준비 중</span>} />
-              {/* 구매 팁 — 방명록형(B3)으로 확장 예정. 현재는 큐레이션 값. */}
-              <InfoRow label="구매 팁" value={(attrs.purchase_caution as string) ?? '정보 없음'} />
             </>
           )}
         </div>
+
+        {/* 구매 팁 (방명록) — 증류소 전용 */}
+        {isDistillery && (
+          <>
+            <SectionTitle>구매 팁</SectionTitle>
+            <GlobalPurchaseTips placeId={place.id} />
+          </>
+        )}
 
         {/* distillery: 투어·현장상품·독점정보 */}
         {isDistillery && (
