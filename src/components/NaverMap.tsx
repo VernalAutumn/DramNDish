@@ -267,7 +267,6 @@ export default function NaverMap() {
   // ─── state: panel ────────────────────────────────────────────────────────
   const [sheetState, setSheetState] = useState<SheetState>('expanded')
   const [view,       setView]       = useState<'list' | 'detail'>('list')
-  const [mainTab,    setMainTab]    = useState<'list' | 'favorites'>('list')
 
   // ─── state: detail ───────────────────────────────────────────────────────
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
@@ -372,8 +371,6 @@ export default function NaverMap() {
   const [recommendedScores,     setRecommendedScores]     = useState<Map<string, number>>(new Map())
   const [isLoadingRecommended,  setIsLoadingRecommended]  = useState(false)
   const [categorySort,       setCategorySort]       = useState<'name' | 'distance'>('name')
-  const [favoriteSort,       setFavoriteSort]       = useState<'added' | 'name' | 'distance'>('added')
-  const [isFavoriteEditMode, setIsFavoriteEditMode] = useState(false)
 
 
   // ─── 장소 불러오기 ───────────────────────────────────────────────────────
@@ -1593,20 +1590,6 @@ export default function NaverMap() {
     })
   }, [filteredPlaces, recommendedOrder])
 
-  // ─── 즐겨찾기 장소 목록 ─────────────────────────────────────────────────
-  const favWhiskyPlaces = useMemo(() =>
-    places.filter((p) => p.type === 'whisky' && favoritedIds.has(p.id)),
-    [places, favoritedIds]
-  )
-  const favBarPlaces = useMemo(() =>
-    places.filter((p) => p.type === 'bar' && favoritedIds.has(p.id)),
-    [places, favoritedIds]
-  )
-  const favRestPlaces = useMemo(() =>
-    places.filter((p) => p.type === 'restaurant' && favoritedIds.has(p.id)),
-    [places, favoritedIds]
-  )
-
   // ─── 필터 변경 시 마커 표시 즉시 동기화 ─────────────────────────────────
   // filterState / selectedTagFilters 가 바뀌는 즉시 → filteredPlaces 재산출 →
   // filteredPlaceIdsRef 갱신 → updateDisplayRef.current 호출로 마커/클러스터 갱신.
@@ -2251,32 +2234,8 @@ export default function NaverMap() {
         >
 
 
-          {/* 목록 / 즐겨찾기 탭 헤더 */}
+          {/* 목록 (즐겨찾기는 마이페이지로 통폐합 — 별도 탭 제거) */}
           {view === 'list' && (
-            <div className="flex border-b border-border-default flex-shrink-0">
-              {([
-                { key: 'list',      label: '목록' },
-                { key: 'favorites', label: '즐겨찾기' },
-              ] as const).map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setMainTab(key)}
-                  className={`flex-1 py-3 text-label font-semibold transition-colors border-b-2 -mb-px ${
-                    mainTab === key
-                      ? 'border-brand-primary text-brand-primary'
-                      : 'border-transparent text-text-tertiary hover:text-text-secondary'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-
-
-
-          {/* 목록 탭 */}
-          {view === 'list' && mainTab === 'list' && (
             <>
               {/* 장소 수 + 뷰모드 탭 + 정렬 */}
               <div className="px-4 pt-2 pb-0 flex-shrink-0 space-y-2">
@@ -2552,122 +2511,6 @@ export default function NaverMap() {
                 </button>
               </div>
             </>
-          )}
-
-          {/* 즐겨찾기 탭 */}
-          {view === 'list' && mainTab === 'favorites' && (
-            <div className="flex-1 overflow-y-auto flex flex-col">
-              {favoritedIds.size === 0 ? (
-                <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400 pb-10">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                  </svg>
-                  <p className="text-sm">즐겨찾기한 장소가 없습니다</p>
-                  <p className="text-xs text-gray-300">장소 상세에서 ★ 눌러보세요</p>
-                </div>
-              ) : (() => {
-                // 전체 즐겨찾기 통합 목록
-                const allFavPlaces = [...favWhiskyPlaces, ...favBarPlaces, ...favRestPlaces]
-
-                // 정렬
-                const sortedFavPlaces = [...allFavPlaces].sort((a, b) => {
-                  if (favoriteSort === 'name') return a.name.localeCompare(b.name, 'ko')
-                  if (favoriteSort === 'distance' && userLocation) {
-                    return haversine(userLocation.lat, userLocation.lng, a.lat, a.lng)
-                         - haversine(userLocation.lat, userLocation.lng, b.lat, b.lng)
-                  }
-                  return 0 // 'added': 원 배열 순서 유지
-                })
-
-                return (
-                  <>
-                    {/* 컨트롤 바 */}
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 flex-shrink-0">
-                      <select
-                        value={favoriteSort}
-                        onChange={(e) => setFavoriteSort(e.target.value as typeof favoriteSort)}
-                        className="text-xs text-gray-500 bg-transparent border-none outline-none cursor-pointer"
-                      >
-                        <option value="added">최근 추가순</option>
-                        <option value="name">가나다순</option>
-                        <option value="distance">가까운 순</option>
-                      </select>
-                      <button
-                        onClick={() => setIsFavoriteEditMode((v) => !v)}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors ${
-                          isFavoriteEditMode
-                            ? 'bg-gray-800 text-white'
-                            : 'text-gray-400 hover:text-gray-700'
-                        }`}
-                      >
-                        {isFavoriteEditMode ? '완료' : '편집'}
-                      </button>
-                    </div>
-
-                    {/* 리스트 */}
-                    <ul className="divide-y divide-gray-50 overflow-y-auto flex-1">
-                      {sortedFavPlaces.map((place) => {
-                        const color    = TYPE_COLOR[place.type] ?? MARKER_COLOR
-                        const isActive = activeId === place.id
-                        const dist     = userLocation
-                          ? haversine(userLocation.lat, userLocation.lng, place.lat, place.lng)
-                          : null
-                        return (
-                          <li key={place.id}>
-                            <div className={`flex items-stretch transition-colors hover:bg-gray-50 ${isActive ? 'border-l-2' : ''}`}
-                              style={isActive ? { borderColor: color, backgroundColor: color + '10' } : {}}>
-                              <button
-                                disabled={isFavoriteEditMode}
-                                onClick={() => { if (!isFavoriteEditMode) openDetail(place.id, LIST_CLICK_ZOOM) }}
-                                className="flex-1 text-left px-4 py-3 min-w-0 disabled:cursor-default"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
-                                    fill={isActive ? color : '#facc15'} stroke="none">
-                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                                  </svg>
-                                  <span className="text-sm font-medium truncate" style={isActive ? { color } : { color: '#1f2937' }}>
-                                    {place.name}
-                                  </span>
-                                  <span className="shrink-0 text-[11px] font-bold px-2.5 py-0.5 rounded-full ml-auto"
-                                    style={{ color, backgroundColor: color + '18' }}>
-                                    {TYPE_LABEL[place.type] ?? place.type}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5 mt-0.5 ml-[19px]">
-                                  {dist !== null && (
-                                    <span className="text-[11px] font-medium text-emerald-500 shrink-0">{formatDist(dist)}</span>
-                                  )}
-                                  {place.district && (
-                                    <span className="text-[11px] text-gray-400 truncate">{place.district}</span>
-                                  )}
-                                </div>
-                              </button>
-                              {/* 편집 모드: 삭제 버튼 */}
-                              {isFavoriteEditMode && (
-                                <button
-                                  onClick={() => handleFavoriteById(place.id)}
-                                  className="flex items-center justify-center px-3 shrink-0 text-red-400 hover:bg-red-50 transition-colors"
-                                  aria-label="즐겨찾기 해제"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="3 6 5 6 21 6"/>
-                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                                    <path d="M10 11v6M14 11v6"/>
-                                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                                  </svg>
-                                </button>
-                              )}
-                            </div>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </>
-                )
-              })()}
-            </div>
           )}
 
           {/* 상세 뷰 */}
