@@ -6,6 +6,7 @@ import { createClient } from '@/src/lib/supabase-browser'
 import GlobalReviewForm from './GlobalReviewForm'
 import GlobalPurchaseForm from './GlobalPurchaseForm'
 import GlobalPurchaseTips from './GlobalPurchaseTips'
+import GlobalDistilleryBottles from './GlobalDistilleryBottles'
 import PhotoLightbox from './PhotoLightbox'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
@@ -654,13 +655,15 @@ export default function GlobalPlaceDetail({
               }
             />
           )}
-          {isDistillery && (
-            <>
-              {/* 증류소 한정 — 한정 보틀+투표 (B4에서 채움) */}
-              <InfoRow label="증류소 한정" value={<span className="text-gray-400">준비 중</span>} />
-            </>
-          )}
         </div>
+
+        {/* 증류소 한정 보틀 (B4) — 사진+제품명 등록 + 있어요/없어요·꼭사야해/굳이 교차검증 */}
+        {isDistillery && (
+          <>
+            <SectionTitle>증류소 한정</SectionTitle>
+            <GlobalDistilleryBottles placeId={place.id} currentUser={currentUser} />
+          </>
+        )}
 
         {/* 구매 팁 (방명록) — 증류소 전용 */}
         {isDistillery && (

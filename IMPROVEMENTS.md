@@ -17,11 +17,9 @@
 *신규 상태 `leftTab: 'list' | 'mypage'`. 좌측 패널 상단 `목록 | 마이페이지` 탭 추가, 우측 프로필 카드(~345줄) → 마이페이지 탭으로 통째 이전(드롭다운 토글 → 정적 헤더), 우측 카드 제거(필터 카드는 우측 잔류). 데이터 로드 useEffect를 `leftTab` 의존으로 전환, 모든 상세 진입(openDetail)에 `setLeftTab('list')` 추가(마커 클릭 시 상세 가림 방지), 익명 비밀번호 미설정 안내를 마이페이지 탭으로 라우팅, 미사용 `showProfileCard` 제거. tsc·next build 클린. 모바일(하단 네비 → `/profile`)은 무손상.*
 - 선행 완료: 국내 리스트 `즐겨찾기` 메인 탭 제거(`1e4249d`), PC 즐겨찾기 표시 복구(`5cc3608`).
 
-### B4. 증류소 '증류소 한정' 보틀 (별도 미니 기능 · Phase 2)
-*B(글로벌 정보란)에서 분리 확정.*
-- 한정 보틀 **사진+제품명 등록** + **있어요/없어요 투표**(교차검증) + 보틀 세부 **꼭사야해/굳이 투표**.
-- ROADMAP Phase 2 "장소 한정 MD/보틀 연동"과 동일. 기존 `bottle_logs`·`products` 인프라 확장.
-- 현재 증류소 상세 정보란에 `증류소 한정: 준비 중` placeholder만 박아둠(`95215b8`).
+### B4. ✅ 증류소 '증류소 한정' 보틀 — 완료 (26/06/26)
+*신규 테이블 `global.distillery_bottles`(사진+제품명) + `distillery_bottle_votes`(availability 있어요/없어요, worth 꼭사야해/굳이 · 1인 1표 PK · 보낸 축만 upsert). 마이그레이션 0012. API `places/[id]/bottles`(GET 집계+myVote·notReady처리/POST/DELETE)·`bottles/[id]/vote`(POST/DELETE 철회). 컴포넌트 `GlobalDistilleryBottles`(등록폼 제품명+사진1, 리스트, 토글 투표 낙관적 업데이트), GlobalPlaceDetail 플레이스홀더 → `증류소 한정` 섹션으로 교체. tsc·build 클린.*
+- ⚠ **운영DB에 마이그레이션 0012 적용 필요**(로컬/프로드 둘 다). 미적용 시 GET이 `notReady`로 빈 목록(상세 안 깨짐).
 
 ---
 
@@ -95,4 +93,4 @@
 - [ ] **Vercel 환경변수 등록**: `GOOGLE_PLACES_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY`, **`SUPABASE_SERVICE_ROLE_KEY`(탈퇴 작동 필수)**.
 - [ ] **Embed 키 리퍼러 배포 도메인 추가**
 - [ ] **데이터 삭제분 재등록 검증**
-- [ ] **적용한 SQL 마이그레이션 운영DB 반영 확인**: 0009(탈퇴 익명화)·0010(place_id)·0011(purchase_tips) + reviews shop_had_tasting/shop_tax_free. (로컬 Supabase엔 실행함)
+- [ ] **적용한 SQL 마이그레이션 운영DB 반영 확인**: 0009(탈퇴 익명화)·0010(place_id)·0011(purchase_tips)·**0012(distillery_bottles+votes)** + reviews shop_had_tasting/shop_tax_free. (0012는 로컬·운영 **둘 다 미적용** — 적용 전엔 증류소 한정 섹션이 notReady 빈 목록)
