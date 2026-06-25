@@ -570,101 +570,78 @@ export default function GlobalPlaceDetail({
           </div>
         )}
 
-        {/* 4-1. 면세 (리쿼샵) */}
-        {place.type === 'liquor_shop' && (
-          <p className="text-xs mt-2">
-            <span className="font-medium text-gray-700">면세: </span>
-            <span className={attrs.tax_free === undefined ? 'text-gray-400' : 'text-gray-800'}>
-              {fmtBool(attrs.tax_free, '면세 가능', '면세 불가')}
-            </span>
-          </p>
-        )}
-
-        {/* 유형별 정보 */}
+        {/* 유형별 정보 (B1 개편: 공식 사이트 공통 + 타입별 핵심만) */}
         <SectionTitle>{GLOBAL_TYPE_LABEL[place.type] ?? '장소'} 정보</SectionTitle>
         <div className="divide-y divide-gray-100">
+          {/* 공식 사이트 — 전 타입 공통. 증류소는 예약 필수 뱃지를 링크 옆에 유지. */}
+          <InfoRow
+            label="공식 사이트"
+            value={
+              <span className="inline-flex items-center gap-1.5">
+                {place.official_url ? (
+                  <a
+                    href={place.official_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                    style={{ color: 'var(--color-brand-primary)' }}
+                  >
+                    바로가기
+                  </a>
+                ) : (
+                  <span className="text-gray-400">정보 없음</span>
+                )}
+                {isDistillery && attrs.booking_required === true && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                    style={{ background: '#fef3c7', color: '#b45309' }}
+                  >
+                    예약 필수
+                  </span>
+                )}
+              </span>
+            }
+          />
+
           {place.type === 'liquor_shop' && (
             <>
+              {/* 시음·면세는 B2에서 후기 집계까지 반영 예정 (현재는 큐레이션 attributes) */}
               <InfoRow label="시음" value={fmtBool(attrs.has_tasting, '가능', '불가')} />
-              {/* 핸드필 행은 has_handfill 키가 있는 가게(예: 리쿼 마운틴)에만 노출 */}
-              {attrs.has_handfill !== undefined && (
-                <InfoRow label="핸드필" value={fmtBool(attrs.has_handfill, '있음', '없음')} />
-              )}
-              <InfoRow label="영업시간" value={(attrs.hours as string) ?? '정보 없음'} />
+              <InfoRow label="면세" value={fmtBool(attrs.tax_free, '면세 가능', '면세 불가')} />
             </>
           )}
           {place.type === 'bar' && (
             <>
-              {/* 흡연·커버차지: 큐레이션 값이 있으면 그것, 없으면 후기 집계(방문자 보고)를 표시 */}
+              {/* 흡연·커버차지: 큐레이션 값 우선, 없으면 후기 집계(방문자 보고). 전문주종·제휴는 태그로 이전. */}
               <InfoRow label="흡연" value={barSmokingValue} />
               <InfoRow label="커버차지" value={barCoverValue} />
-              <InfoRow label="전문 주종" value={(attrs.specialty as string) ?? '정보 없음'} />
-              <InfoRow
-                label="제휴"
-                value={
-                  Array.isArray(attrs.affiliations) && attrs.affiliations.length > 0
-                    ? (attrs.affiliations as string[]).join(', ')
-                    : '정보 없음'
-                }
-              />
-              <InfoRow label="영업시간" value={(attrs.hours as string) ?? '정보 없음'} />
             </>
           )}
           {place.type === 'restaurant' && (
-            <>
-              <InfoRow
-                label="타베로그"
-                value={
-                  attrs.tabelog_url ? (
-                    <a
-                      href={attrs.tabelog_url as string}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline"
-                      style={{ color: 'var(--color-brand-primary)' }}
-                    >
-                      {attrs.tabelog_rating ? `평점 ${attrs.tabelog_rating}` : '링크'}
-                    </a>
-                  ) : (
-                    '정보 없음'
-                  )
-                }
-              />
-              <InfoRow label="영업시간" value={(attrs.hours as string) ?? '정보 없음'} />
-            </>
+            <InfoRow
+              label="타베로그"
+              value={
+                attrs.tabelog_url ? (
+                  <a
+                    href={attrs.tabelog_url as string}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                    style={{ color: 'var(--color-brand-primary)' }}
+                  >
+                    {attrs.tabelog_rating ? `평점 ${attrs.tabelog_rating}` : '링크'}
+                  </a>
+                ) : (
+                  '정보 없음'
+                )
+              }
+            />
           )}
           {isDistillery && (
             <>
-              <InfoRow label="접근·교통" value={(attrs.access as string) ?? '정보 없음'} />
-              <InfoRow
-                label="예약"
-                value={
-                  attrs.booking_required === undefined ? (
-                    '정보 없음'
-                  ) : (
-                    <span>
-                      {attrs.booking_required ? '예약 필수' : '예약 불필요'}
-                      {!!attrs.booking_url && (
-                        <>
-                          {' · '}
-                          <a
-                            href={attrs.booking_url as string}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                            style={{ color: 'var(--color-brand-primary)' }}
-                          >
-                            예약 링크
-                          </a>
-                        </>
-                      )}
-                    </span>
-                  )
-                }
-              />
-              <InfoRow label="운영 시즌" value={(attrs.season as string) ?? '정보 없음'} />
-              <InfoRow label="핸드필" value={fmtBool(attrs.handfill, '있음', '없음')} />
-              {/* 증류소 현장 구매 팁 — 예: "시내 리쿼샵이 더 쌈", "한정판은 여기서만" 등 */}
+              {/* 증류소 한정 — 한정 보틀+투표 (B4에서 채움) */}
+              <InfoRow label="증류소 한정" value={<span className="text-gray-400">준비 중</span>} />
+              {/* 구매 팁 — 방명록형(B3)으로 확장 예정. 현재는 큐레이션 값. */}
               <InfoRow label="구매 팁" value={(attrs.purchase_caution as string) ?? '정보 없음'} />
             </>
           )}
