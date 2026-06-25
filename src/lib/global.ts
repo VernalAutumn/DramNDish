@@ -32,6 +32,8 @@ export interface GlobalReview {
   party_size: number | null
   bar_smoking: boolean | null
   bar_cover_charge: boolean | null
+  shop_had_tasting: boolean | null
+  shop_tax_free: boolean | null
   created_at: string
   user: { nickname: string | null } | null
   votes: { vote: 'helpful' | 'not_helpful'; user_id: string }[]

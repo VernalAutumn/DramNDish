@@ -23,7 +23,7 @@ export async function GET(
       supabase
         .from('reviews')
         .select(
-          'id, user_id, rating, comment, visited_at, photo_urls, companion_type, party_size, bar_smoking, bar_cover_charge, created_at, user:users!reviews_user_id_fkey(nickname), votes:review_votes(vote, user_id)'
+          'id, user_id, rating, comment, visited_at, photo_urls, companion_type, party_size, bar_smoking, bar_cover_charge, shop_had_tasting, shop_tax_free, created_at, user:users!reviews_user_id_fkey(nickname), votes:review_votes(vote, user_id)'
         )
         .eq('place_id', id)
         .order('created_at', { ascending: false }),

@@ -439,6 +439,22 @@ export default function GlobalPlaceDetail({
         ? `후기 ${cvReports.length}건 중 있었음 ${cvReports.filter((r) => r.bar_cover_charge).length}건`
         : '정보 없음'
 
+  // 리쿼샵 시음·면세: 큐레이션 attributes 우선, 없으면 후기 집계(방문자 보고) — 바 방식 차용
+  const tsReports = reviews.filter((r) => r.shop_had_tasting !== null)
+  const tfReports = reviews.filter((r) => r.shop_tax_free !== null)
+  const shopTastingValue: React.ReactNode =
+    attrs.has_tasting !== undefined
+      ? fmtBool(attrs.has_tasting, '가능', '불가')
+      : tsReports.length > 0
+        ? `후기 ${tsReports.length}건 중 가능 ${tsReports.filter((r) => r.shop_had_tasting).length}건`
+        : '정보 없음'
+  const shopTaxFreeValue: React.ReactNode =
+    attrs.tax_free !== undefined
+      ? fmtBool(attrs.tax_free, '면세 가능', '면세 불가')
+      : tfReports.length > 0
+        ? `후기 ${tfReports.length}건 중 가능 ${tfReports.filter((r) => r.shop_tax_free).length}건`
+        : '정보 없음'
+
   return (
     <div className="h-full flex flex-col">
       {/* 헤더: 1. 명칭 + 분류 */}
@@ -605,9 +621,9 @@ export default function GlobalPlaceDetail({
 
           {place.type === 'liquor_shop' && (
             <>
-              {/* 시음·면세는 B2에서 후기 집계까지 반영 예정 (현재는 큐레이션 attributes) */}
-              <InfoRow label="시음" value={fmtBool(attrs.has_tasting, '가능', '불가')} />
-              <InfoRow label="면세" value={fmtBool(attrs.tax_free, '면세 가능', '면세 불가')} />
+              {/* 시음·면세: 큐레이션 우선, 없으면 후기 집계 (바 방식 차용) */}
+              <InfoRow label="시음" value={shopTastingValue} />
+              <InfoRow label="면세" value={shopTaxFreeValue} />
             </>
           )}
           {place.type === 'bar' && (
@@ -1014,6 +1030,18 @@ export default function GlobalPlaceDetail({
                       )}
                       {r.bar_cover_charge !== null && (
                         <span>커버차지 {r.bar_cover_charge ? '있었음' : '없었음'}</span>
+                      )}
+                    </p>
+                  )}
+
+                  {/* 리쿼샵: 방문 시 시음·면세 (후기 수집값) */}
+                  {(r.shop_had_tasting !== null || r.shop_tax_free !== null) && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {r.shop_had_tasting !== null && (
+                        <span className="mr-2">시음 {r.shop_had_tasting ? '가능' : '불가'}</span>
+                      )}
+                      {r.shop_tax_free !== null && (
+                        <span>면세 {r.shop_tax_free ? '가능' : '불가'}</span>
                       )}
                     </p>
                   )}

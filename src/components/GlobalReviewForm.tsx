@@ -70,6 +70,7 @@ export default function GlobalReviewForm({
   const isBar = placeType === 'bar'
   const isRestaurant = placeType === 'restaurant'
   const isShop = placeType === 'liquor_shop' || placeType === 'distillery'
+  const isLiquorShop = placeType === 'liquor_shop'
   const showSpend = isBar || isRestaurant
 
   const bottleTitle = isBar ? '가장 좋았던 한 잔' : isRestaurant ? '가장 좋았던 메뉴' : '구매 인증'
@@ -106,6 +107,12 @@ export default function GlobalReviewForm({
   )
   const [barCover, setBarCover] = useState<'yes' | 'no' | null>(
     editReview?.bar_cover_charge == null ? null : editReview.bar_cover_charge ? 'yes' : 'no'
+  )
+  const [shopTasting, setShopTasting] = useState<'yes' | 'no' | null>(
+    editReview?.shop_had_tasting == null ? null : editReview.shop_had_tasting ? 'yes' : 'no'
+  )
+  const [shopTaxFree, setShopTaxFree] = useState<'yes' | 'no' | null>(
+    editReview?.shop_tax_free == null ? null : editReview.shop_tax_free ? 'yes' : 'no'
   )
 
   const [busy, setBusy] = useState(false)
@@ -155,6 +162,8 @@ export default function GlobalReviewForm({
         spend_currency: showSpend && spend ? currency || null : null,
         bar_smoking: isBar && barSmoking ? barSmoking === 'yes' : null,
         bar_cover_charge: isBar && barCover ? barCover === 'yes' : null,
+        shop_had_tasting: isLiquorShop && shopTasting ? shopTasting === 'yes' : null,
+        shop_tax_free: isLiquorShop && shopTaxFree ? shopTaxFree === 'yes' : null,
         bottle: hasBottle
           ? {
               name: bottleName.trim() || undefined,
@@ -336,10 +345,14 @@ export default function GlobalReviewForm({
           <ExistingPhotos urls={existingReviewPhotos} onRemove={(u) => setExistingReviewPhotos((p) => p.filter((x) => x !== u))} />
           <PhotoPicker files={reviewFiles} setFiles={setReviewFiles} label="매장·분위기 사진 (선택)" max={5} />
 
-          {(showSpend || isBar) && (
+          {(showSpend || isBar || isLiquorShop) && (
             <>
               <button type="button" onClick={() => setShowMore((v) => !v)} className="text-[11px] font-medium underline text-gray-500">
-                {showMore ? '선택 입력 접기' : '자세히 (방문자·비용 등 — 선택)'}
+                {showMore
+                  ? '선택 입력 접기'
+                  : isLiquorShop
+                    ? '자세히 (시음·면세 — 선택)'
+                    : '자세히 (방문자·비용 등 — 선택)'}
               </button>
               {showMore && (
                 <div className="space-y-3">
@@ -386,13 +399,17 @@ export default function GlobalReviewForm({
                     </>
                   )}
 
-                  {isBar && (
+                  {(isBar || isLiquorShop) && (
                     <div className="space-y-2">
-                      {(
-                        [
-                          { key: 'smoking', label: '흡연', val: barSmoking, set: setBarSmoking, yes: '흡연 가능', no: '금연' },
-                          { key: 'cover', label: '커버차지', val: barCover, set: setBarCover, yes: '있었음', no: '없었음' },
-                        ] as const
+                      {(isBar
+                        ? ([
+                            { key: 'smoking', label: '흡연', val: barSmoking, set: setBarSmoking, yes: '흡연 가능', no: '금연' },
+                            { key: 'cover', label: '커버차지', val: barCover, set: setBarCover, yes: '있었음', no: '없었음' },
+                          ] as const)
+                        : ([
+                            { key: 'tasting', label: '시음', val: shopTasting, set: setShopTasting, yes: '가능', no: '불가' },
+                            { key: 'taxfree', label: '면세', val: shopTaxFree, set: setShopTaxFree, yes: '가능', no: '불가' },
+                          ] as const)
                       ).map((row) => (
                         <div key={row.key} className="flex items-center gap-2">
                           <span className="text-[11px] text-gray-500 w-14 flex-shrink-0">{row.label}</span>

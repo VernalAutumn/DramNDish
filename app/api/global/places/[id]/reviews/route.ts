@@ -56,6 +56,8 @@ export async function POST(
     companionType === 'solo' ? 1 : body.party_size != null && body.party_size !== '' ? Number(body.party_size) : null
   const barSmoking = typeof body.bar_smoking === 'boolean' ? body.bar_smoking : null
   const barCover = typeof body.bar_cover_charge === 'boolean' ? body.bar_cover_charge : null
+  const shopTasting = typeof body.shop_had_tasting === 'boolean' ? body.shop_had_tasting : null
+  const shopTaxFree = typeof body.shop_tax_free === 'boolean' ? body.shop_tax_free : null
 
   // 보틀 기록 (좋았던 메뉴/한 잔 또는 구매 인증) — 전부 선택
   const bottle = body.bottle as
@@ -99,6 +101,8 @@ export async function POST(
       party_size: partySize,
       bar_smoking: type === 'bar' ? barSmoking : null,
       bar_cover_charge: type === 'bar' ? barCover : null,
+      shop_had_tasting: type === 'liquor_shop' ? shopTasting : null,
+      shop_tax_free: type === 'liquor_shop' ? shopTaxFree : null,
     })
     .select('id')
     .single()
