@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from('places')
       .select(
-        'id, name, name_local, type, subkind, country, region, address, lat, lng, source, google_maps_url, official_url, attributes, created_at, contributor:users!places_contributed_by_fkey(nickname)'
+        'id, name, name_local, type, subkind, country, region, address, lat, lng, source, google_maps_url, official_url, google_place_id, attributes, created_at, contributor:users!places_contributed_by_fkey(nickname)'
       )
       .order('created_at', { ascending: true })
 
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
   const address: string | null = body.address ? String(body.address).trim() : null
   const googleMapsUrl: string | null = body.google_maps_url ? String(body.google_maps_url).trim() : null
   const officialUrl: string | null = body.official_url ? String(body.official_url).trim() : null
+  const googlePlaceId: string | null = body.google_place_id ? String(body.google_place_id).trim() : null
   // 좌표: 구글 검색으로 선택한 경우 함께 들어온다. 숫자로 검증하고, 아니면 null.
   const lat: number | null = Number.isFinite(body.lat) ? Number(body.lat) : null
   const lng: number | null = Number.isFinite(body.lng) ? Number(body.lng) : null
@@ -134,6 +135,7 @@ export async function POST(req: NextRequest) {
       lng,
       google_maps_url: googleMapsUrl,
       official_url: officialUrl,
+      google_place_id: googlePlaceId,
       attributes,
       source: 'community',
       contributed_by: user.id,

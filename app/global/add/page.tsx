@@ -58,6 +58,7 @@ export default function GlobalAddPage() {
   const [searchError, setSearchError] = useState<string | null>(null) // 검색 실패/네트워크 오류
   const [noResults, setNoResults] = useState(false)                    // 정상 응답인데 결과 0건
   const [suggestedName, setSuggestedName] = useState<string | null>(null) // 구글 한국어 표기(이름 제안)
+  const [placeId, setPlaceId] = useState<string | null>(null) // 구글 place_id (Embed 핀 정확도용)
   // 자동완성↔상세를 한 세션으로 묶는 토큰. 선택 후 비워 다음 검색은 새 토큰을 쓴다.
   const sessionToken = useRef<string | null>(null)
   // 제안을 막 선택한 직후 1회: 검색창에 이름이 채워져도 재검색·드롭다운을 띄우지 않는다.
@@ -129,6 +130,7 @@ export default function GlobalAddPage() {
     setSearch(s.mainText)
     // 구글이 languageCode:'ko'로 준 표기 → 한글명(이름) 칸에 칩으로 제안.
     setSuggestedName(s.mainText.trim() || null)
+    setPlaceId(s.providerId || null) // Embed 핀을 place_id로 정확히 찍기 위해 보관
     try {
       const res = await fetch(
         `/api/global/place?placeId=${encodeURIComponent(s.providerId)}&country=${country}&token=${sessionToken.current ?? ''}`
@@ -179,6 +181,7 @@ export default function GlobalAddPage() {
           lng: coords.lng,
           google_maps_url: mapsUrl.trim() || null,
           official_url: officialUrl.trim() || null,
+          google_place_id: placeId,
           attributes,
         }),
       })
@@ -236,6 +239,7 @@ export default function GlobalAddPage() {
                 setSearchError(null)
                 setNoResults(false)
                 setSuggestedName(null)
+                setPlaceId(null)
                 sessionToken.current = null
               }}
               className="flex-1 py-2.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700"

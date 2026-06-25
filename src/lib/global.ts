@@ -15,6 +15,7 @@ export interface GlobalPlace {
   source: string // 'seed' | 'community'
   google_maps_url: string | null
   official_url: string | null
+  google_place_id: string | null
   attributes: Record<string, unknown>
   created_at: string
   contributor: { nickname: string | null } | null

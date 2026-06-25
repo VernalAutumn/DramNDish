@@ -30,9 +30,14 @@ export function placeEmbedSrc(p: {
   name_local: string | null
   region: string | null
   address: string | null
+  google_place_id?: string | null
 }): string | null {
   if (!EMBED_KEY) return null
-  // 구글에서 가장 잘 찾히는 토큰 순서: 원문(영어/현지어) 이름 → 지역 → 주소.
+  // place_id가 있으면 그걸로 정확히 찍는다 (이름 검색 오핀 방지 — 체인·동명 업장).
+  if (p.google_place_id) {
+    return `https://www.google.com/maps/embed/v1/place?key=${EMBED_KEY}&q=${encodeURIComponent(`place_id:${p.google_place_id}`)}`
+  }
+  // 없으면(직접 입력 등) 구글에서 잘 찾히는 토큰 순서: 원문 이름 → 지역 → 주소.
   const query = [p.name_local || p.name, p.region, p.address].filter(Boolean).join(' ').trim()
   if (!query) return null
   return `https://www.google.com/maps/embed/v1/place?key=${EMBED_KEY}&q=${encodeURIComponent(query)}`
