@@ -13,8 +13,7 @@ import { makeGlobalSSRClient, getGlobalUser } from '@/src/lib/global-server'
 interface VoteRow {
   bottle_id: string
   user_id: string
-  availability: 'in_stock' | 'out_of_stock' | null
-  worth: 'must_buy' | 'meh' | null
+  vote: 'up' | 'down'
 }
 
 export async function GET(
@@ -49,18 +48,17 @@ export async function GET(
   if (ids.length > 0) {
     const { data: voteRows } = await client
       .from('distillery_bottle_votes')
-      .select('bottle_id, user_id, availability, worth')
+      .select('bottle_id, user_id, vote')
       .in('bottle_id', ids)
     votes = (voteRows ?? []) as VoteRow[]
   }
 
   const result = (bottles ?? []).map((b) => {
     const mine = votes.find((v) => v.bottle_id === b.id && v.user_id === user?.id)
-    const counts = { in_stock: 0, out_of_stock: 0, must_buy: 0, meh: 0 }
+    const counts = { up: 0, down: 0 }
     for (const v of votes) {
       if (v.bottle_id !== b.id) continue
-      if (v.availability) counts[v.availability]++
-      if (v.worth) counts[v.worth]++
+      if (v.vote) counts[v.vote]++
     }
     const u = Array.isArray(b.user) ? b.user[0] : b.user
     return {
@@ -71,7 +69,7 @@ export async function GET(
       created_at: b.created_at,
       nickname: u?.nickname ?? null,
       counts,
-      myVote: { availability: mine?.availability ?? null, worth: mine?.worth ?? null },
+      myVote: mine?.vote ?? null,
     }
   })
 

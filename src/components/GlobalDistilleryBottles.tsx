@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import PhotoPicker from './PhotoPicker'
+import PhotoLightbox from './PhotoLightbox'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
 
 // 증류소 한정 보틀 (B4) — 사진+제품명 등록 + 있어요/없어요·꼭사야해/굳이 교차검증.
 // 공개 읽기 + 로그인 등록/투표/본인 삭제. 상세 메인과 분리 조회 → notReady여도 안 깨짐.
 
-type Availability = 'in_stock' | 'out_of_stock'
-type Worth = 'must_buy' | 'meh'
+type Vote = 'up' | 'down'
 
 interface Bottle {
   id: string
@@ -18,8 +18,8 @@ interface Bottle {
   user_id: string | null
   created_at: string
   nickname: string | null
-  counts: { in_stock: number; out_of_stock: number; must_buy: number; meh: number }
-  myVote: { availability: Availability | null; worth: Worth | null }
+  counts: { up: number; down: number }
+  myVote: Vote | null
 }
 
 const BRAND = 'var(--color-brand-primary)'
@@ -37,6 +37,7 @@ export default function GlobalDistilleryBottles({
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -89,14 +90,14 @@ export default function GlobalDistilleryBottles({
   }
 
   // 투표: 같은 값 재클릭 → 철회, 다른 값 → 전환. 낙관적 업데이트 후 실패 시 재조회.
-  const vote = async (bottleId: string, axis: 'availability' | 'worth', value: Availability | Worth) => {
+  const vote = async (bottleId: string, value: Vote) => {
     if (!currentUser) {
       alert('로그인이 필요한 기능입니다.')
       return
     }
     const target = bottles.find((b) => b.id === bottleId)
     if (!target) return
-    const cur = target.myVote[axis]
+    const cur = target.myVote
     const retract = cur === value
 
     setBottles((prev) =>
@@ -106,20 +107,20 @@ export default function GlobalDistilleryBottles({
         if (retract) {
           counts[value]--
         } else {
-          if (cur) counts[cur as keyof typeof counts]--
+          if (cur) counts[cur]--
           counts[value]++
         }
-        return { ...b, counts, myVote: { ...b.myVote, [axis]: retract ? null : value } }
+        return { ...b, counts, myVote: retract ? null : value }
       })
     )
 
     try {
       const res = retract
-        ? await fetch(`/api/global/bottles/${bottleId}/vote?axis=${axis}`, { method: 'DELETE' })
+        ? await fetch(`/api/global/bottles/${bottleId}/vote`, { method: 'DELETE' })
         : await fetch(`/api/global/bottles/${bottleId}/vote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ axis, value }),
+            body: JSON.stringify({ vote: value }),
           })
       if (!res.ok) throw new Error()
     } catch {
@@ -164,7 +165,12 @@ export default function GlobalDistilleryBottles({
               <div className="flex gap-2.5">
                 {b.photo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={b.photo_url} alt={b.name} className="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
+                  <img
+                    src={b.photo_url}
+                    alt={b.name}
+                    onClick={() => setLightbox(b.photo_url!)}
+                    className="w-14 h-14 object-cover rounded-lg flex-shrink-0 cursor-pointer"
+                  />
                 ) : (
                   <div className="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300 text-lg flex-shrink-0">
                     🥃
@@ -185,22 +191,10 @@ export default function GlobalDistilleryBottles({
                 </div>
               </div>
 
-              {/* 재고 교차검증 */}
-              <div className="mt-2">
-                <p className="text-[10px] text-gray-400 mb-1">현재 재고</p>
-                <div className="flex gap-1.5">
-                  <VoteBtn active={b.myVote.availability === 'in_stock'} label="있어요" count={b.counts.in_stock} onClick={() => vote(b.id, 'availability', 'in_stock')} />
-                  <VoteBtn active={b.myVote.availability === 'out_of_stock'} label="없어요" count={b.counts.out_of_stock} onClick={() => vote(b.id, 'availability', 'out_of_stock')} />
-                </div>
-              </div>
-
-              {/* 살 가치 */}
-              <div className="mt-1.5">
-                <p className="text-[10px] text-gray-400 mb-1">살 가치</p>
-                <div className="flex gap-1.5">
-                  <VoteBtn active={b.myVote.worth === 'must_buy'} label="꼭사야해" count={b.counts.must_buy} onClick={() => vote(b.id, 'worth', 'must_buy')} />
-                  <VoteBtn active={b.myVote.worth === 'meh'} label="굳이" count={b.counts.meh} onClick={() => vote(b.id, 'worth', 'meh')} />
-                </div>
+              {/* 추천 / 비추 (엄지 한 표) */}
+              <div className="mt-2 flex gap-1.5">
+                <VoteBtn active={b.myVote === 'up'} label="👍 추천" count={b.counts.up} onClick={() => vote(b.id, 'up')} />
+                <VoteBtn active={b.myVote === 'down'} label="👎 비추" count={b.counts.down} onClick={() => vote(b.id, 'down')} />
               </div>
             </li>
           ))}
@@ -248,6 +242,8 @@ export default function GlobalDistilleryBottles({
           </button>
         )
       ) : null}
+
+      {lightbox && <PhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   )
 }
