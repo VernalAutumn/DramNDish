@@ -84,9 +84,6 @@ function PlaceCard({
           ))}
         </div>
       )}
-      <p className="text-[11px] text-gray-400 mt-1.5">
-        {p.source === 'seed' ? '운영진 시드' : `등록: ${p.contributor?.nickname ?? '익명'}`}
-      </p>
     </button>
   )
 }
