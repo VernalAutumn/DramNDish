@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js'
 import PhotoPicker from './PhotoPicker'
 import PhotoLightbox from './PhotoLightbox'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
+import { isAdminEmail } from '@/src/lib/admin'
 
 // 증류소 한정 보틀 (B4) — 사진+제품명 등록 + 있어요/없어요·꼭사야해/굳이 교차검증.
 // 공개 읽기 + 로그인 등록/투표/본인 삭제. 상세 메인과 분리 조회 → notReady여도 안 깨짐.
@@ -82,6 +83,19 @@ export default function GlobalDistilleryBottles({
     if (!confirm('이 한정 보틀을 삭제할까요?')) return
     try {
       const res = await fetch(`/api/global/places/${placeId}/bottles?bottleId=${bottleId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setBottles((prev) => prev.filter((b) => b.id !== bottleId))
+    } catch {
+      alert('삭제에 실패했습니다.')
+    }
+  }
+
+  // 관리자 모더레이션 삭제 — 작성자가 아니어도 삭제(RLS 우회 API).
+  const isAdmin = isAdminEmail(currentUser?.email)
+  const adminRemove = async (bottleId: string) => {
+    if (!confirm('[관리자] 이 한정 보틀을 삭제할까요? 되돌릴 수 없습니다.')) return
+    try {
+      const res = await fetch(`/api/global/admin/moderate?type=bottle&id=${bottleId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       setBottles((prev) => prev.filter((b) => b.id !== bottleId))
     } catch {
@@ -182,11 +196,15 @@ export default function GlobalDistilleryBottles({
                     <span className="text-[10px] text-gray-400">
                       {b.nickname ?? '익명'} · {b.created_at?.slice(0, 10)}
                     </span>
-                    {currentUser && b.user_id === currentUser.id && (
+                    {currentUser && b.user_id === currentUser.id ? (
                       <button onClick={() => remove(b.id)} className="text-[10px] text-gray-400 hover:text-red-500 underline">
                         삭제
                       </button>
-                    )}
+                    ) : isAdmin ? (
+                      <button onClick={() => adminRemove(b.id)} className="text-[10px] font-semibold text-red-500 hover:text-red-700 underline">
+                        관리자 삭제
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>

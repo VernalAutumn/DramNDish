@@ -10,6 +10,7 @@ import GlobalDistilleryBottles from './GlobalDistilleryBottles'
 import PhotoLightbox from './PhotoLightbox'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
+import { isAdminEmail } from '@/src/lib/admin'
 import { placeEmbedSrc } from '@/src/lib/google-embed'
 import {
   GlobalPlace,
@@ -359,6 +360,24 @@ export default function GlobalPlaceDetail({
     [load]
   )
 
+  // 관리자 모더레이션 삭제 — 작성자가 아니어도 삭제(RLS 우회 API). 일반 유저에겐 버튼이 안 보임.
+  const adminDelete = useCallback(
+    async (type: string, id: string) => {
+      if (!confirm('[관리자] 이 항목을 삭제할까요? 되돌릴 수 없습니다.')) return
+      try {
+        const res = await fetch(`/api/global/admin/moderate?type=${type}&id=${id}`, { method: 'DELETE' })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(j.error || '삭제 실패')
+        }
+        await load()
+      } catch (e) {
+        alert(e instanceof Error ? e.message : '삭제에 실패했습니다.')
+      }
+    },
+    [load]
+  )
+
   if (status === 'loading') {
     return (
       <div className="h-full flex items-center justify-center">
@@ -418,6 +437,7 @@ export default function GlobalPlaceDetail({
   }
 
   const isDistillery = place.type === 'distillery'
+  const isAdmin = isAdminEmail(currentUser?.email)
   const tourPrograms = attrs.tour_programs as
     | { name?: string; type?: string; season?: string; price?: number | string; booking_required?: boolean; booking_url?: string; duration?: string; includes?: string[] }[]
     | undefined
@@ -669,7 +689,7 @@ export default function GlobalPlaceDetail({
         {isDistillery && (
           <>
             <SectionTitle>구매 팁</SectionTitle>
-            <GlobalPurchaseTips placeId={place.id} />
+            <GlobalPurchaseTips placeId={place.id} isAdmin={isAdmin} />
           </>
         )}
 
@@ -798,6 +818,14 @@ export default function GlobalPlaceDetail({
                     {/* 작성자 표기 (§8.4 출처 노출) */}
                     <span className="text-gray-400">· {o.nickname ?? '익명'}</span>
                     {days >= 15 && <span className="text-red-500 font-medium">방문 전 확인 권장</span>}
+                    {isAdmin && (
+                      <button
+                        onClick={() => adminDelete('observation', o.id)}
+                        className="ml-auto text-[11px] font-semibold text-red-500 hover:text-red-700 underline"
+                      >
+                        관리자 삭제
+                      </button>
+                    )}
                   </p>
                 </li>
               )
@@ -811,19 +839,30 @@ export default function GlobalPlaceDetail({
         <SectionTitle>태그</SectionTitle>
         <div className="flex flex-wrap gap-1.5">
           {tags.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => voteTag(t.label)}
-              disabled={tagBusy}
-              className="text-[11px] font-medium px-2.5 py-1 rounded-full border disabled:opacity-60"
-              style={
-                t.mine
-                  ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
-                  : { borderColor: '#e5e7eb', color: '#6b7280' }
-              }
-            >
-              {t.label} {t.count}
-            </button>
+            <span key={t.id} className="inline-flex items-center">
+              <button
+                onClick={() => voteTag(t.label)}
+                disabled={tagBusy}
+                className="text-[11px] font-medium px-2.5 py-1 rounded-full border disabled:opacity-60"
+                style={
+                  t.mine
+                    ? { borderColor: 'var(--color-brand-primary)', color: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.06)' }
+                    : { borderColor: '#e5e7eb', color: '#6b7280' }
+                }
+              >
+                {t.label} {t.count}
+              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => adminDelete('tag', t.id)}
+                  className="ml-0.5 w-4 h-4 rounded-full bg-red-500/80 text-white text-[9px] leading-none flex items-center justify-center"
+                  title="관리자 태그 삭제"
+                  aria-label="관리자 태그 삭제"
+                >
+                  ×
+                </button>
+              )}
+            </span>
           ))}
         </div>
         <div className="flex gap-2 mt-2">
@@ -902,7 +941,7 @@ export default function GlobalPlaceDetail({
                     {p.caption}
                   </p>
                 )}
-                {currentUser?.id === p.user_id && (
+                {currentUser?.id === p.user_id ? (
                   <button
                     onClick={() => deletePhoto(p.id)}
                     className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] leading-none"
@@ -910,7 +949,16 @@ export default function GlobalPlaceDetail({
                   >
                     ×
                   </button>
-                )}
+                ) : isAdmin ? (
+                  <button
+                    onClick={() => adminDelete('photo', p.id)}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500/80 text-white text-[10px] leading-none"
+                    aria-label="관리자 사진 삭제"
+                    title="관리자 삭제"
+                  >
+                    ×
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
@@ -965,11 +1013,15 @@ export default function GlobalPlaceDetail({
                   <p className="text-[11px] text-gray-400">
                     {b.user ? (b.user.nickname ?? '익명') : '탈퇴한 사용자'} · {b.logged_at}
                   </p>
-                  {currentUser?.id === b.user_id && (
+                  {currentUser?.id === b.user_id ? (
                     <button onClick={() => deleteLog(b.id)} className="text-[11px] text-gray-400 hover:text-red-500 underline">
                       삭제
                     </button>
-                  )}
+                  ) : isAdmin ? (
+                    <button onClick={() => adminDelete('bottle_log', b.id)} className="text-[11px] font-semibold text-red-500 hover:text-red-700 underline">
+                      관리자 삭제
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -1128,18 +1180,28 @@ export default function GlobalPlaceDetail({
                         </button>
                       </span>
                     ) : (
-                      <button
-                        onClick={() => {
-                          if (!currentUser) {
-                            alert('로그인이 필요한 기능입니다.')
-                            return
-                          }
-                          setReportTarget({ type: 'review', id: r.id })
-                        }}
-                        className="ml-auto text-[11px] text-gray-400 hover:text-red-500 underline"
-                      >
-                        신고
-                      </button>
+                      <span className="ml-auto flex gap-2">
+                        {isAdmin && (
+                          <button
+                            onClick={() => adminDelete('review', r.id)}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 underline"
+                          >
+                            관리자 삭제
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (!currentUser) {
+                              alert('로그인이 필요한 기능입니다.')
+                              return
+                            }
+                            setReportTarget({ type: 'review', id: r.id })
+                          }}
+                          className="text-[11px] text-gray-400 hover:text-red-500 underline"
+                        >
+                          신고
+                        </button>
+                      </span>
                     )}
                   </div>
                 </li>

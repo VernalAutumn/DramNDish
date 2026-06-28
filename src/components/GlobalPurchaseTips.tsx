@@ -20,7 +20,7 @@ function nick(t: Tip): string {
   return u.nickname ?? '익명'
 }
 
-export default function GlobalPurchaseTips({ placeId }: { placeId: string }) {
+export default function GlobalPurchaseTips({ placeId, isAdmin = false }: { placeId: string; isAdmin?: boolean }) {
   const [tips, setTips] = useState<Tip[]>([])
   const [uid, setUid] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -75,6 +75,18 @@ export default function GlobalPurchaseTips({ placeId }: { placeId: string }) {
     }
   }
 
+  // 관리자 모더레이션 삭제 — 작성자가 아니어도 삭제(RLS 우회 API).
+  const adminRemove = async (tipId: string) => {
+    if (!confirm('[관리자] 이 구매팁을 삭제할까요? 되돌릴 수 없습니다.')) return
+    try {
+      const res = await fetch(`/api/global/admin/moderate?type=tip&id=${tipId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setTips((prev) => prev.filter((t) => t.id !== tipId))
+    } catch {
+      alert('삭제에 실패했습니다.')
+    }
+  }
+
   return (
     <div className="space-y-2">
       {tips.length === 0 ? (
@@ -88,11 +100,15 @@ export default function GlobalPurchaseTips({ placeId }: { placeId: string }) {
                 <span className="text-[10px] text-gray-400">
                   {nick(t)} · {t.created_at?.slice(0, 10)}
                 </span>
-                {uid && t.user_id === uid && (
+                {uid && t.user_id === uid ? (
                   <button onClick={() => remove(t.id)} className="text-[10px] text-gray-400 hover:text-red-500 underline">
                     삭제
                   </button>
-                )}
+                ) : isAdmin ? (
+                  <button onClick={() => adminRemove(t.id)} className="text-[10px] font-semibold text-red-500 hover:text-red-700 underline">
+                    관리자 삭제
+                  </button>
+                ) : null}
               </div>
             </li>
           ))}
