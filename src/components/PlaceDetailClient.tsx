@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/src/lib/supabase-browser'
+import { isAdminEmail } from '@/src/lib/admin'
 import type { User } from '@supabase/supabase-js'
 
 interface Place {
@@ -443,6 +444,25 @@ export default function PlaceDetailClient({
     }
   }
 
+  // 관리자 모더레이션 — 작성자가 아니어도 삭제(service-role API). 일반 유저엔 버튼 미노출.
+  const isAdmin = isAdminEmail(currentUser?.email)
+  const adminDeleteComment = async (commentId: string) => {
+    if (!confirm('[관리자] 이 코멘트를 삭제할까요? 되돌릴 수 없습니다.')) return
+    setComments(prev => prev.filter(c => c.id !== commentId))
+    const res = await fetch(`/api/global/admin/moderate?type=comment&id=${commentId}`, { method: 'DELETE' })
+    if (!res.ok) {
+      alert('삭제에 실패했습니다.')
+      fetch(`/api/places/${place.id}/comments`)
+        .then(r => r.json()).then(data => setComments(Array.isArray(data) ? data : []))
+    }
+  }
+  const adminDeletePhoto = async (photoId: string) => {
+    if (!confirm('[관리자] 이 사진을 삭제할까요? 되돌릴 수 없습니다.')) return
+    setPhotos(prev => prev.filter(p => p.id !== photoId))
+    const res = await fetch(`/api/global/admin/moderate?type=photo_kr&id=${photoId}`, { method: 'DELETE' })
+    if (!res.ok) alert('삭제에 실패했습니다.')
+  }
+
   const formatDate = (iso: string) => {
     const d = new Date(iso)
     return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`
@@ -765,14 +785,24 @@ export default function PlaceDetailClient({
                   <img src={photo.url} alt={`${photo.nickname}님의 사진`} className="w-full h-full object-cover"/>
                   <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-between">
                     <p className="text-[11px] text-white font-medium truncate">{photo.nickname}</p>
-                    <button
-                      onClick={e => { e.stopPropagation(); openReport(photo.id, 'photo') }}
-                      className="shrink-0 p-1 text-white/60 hover:text-red-300 transition-colors"
-                      title="사진 신고">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
-                      </svg>
-                    </button>
+                    <div className="shrink-0 flex items-center gap-1">
+                      {isAdmin && (
+                        <button
+                          onClick={e => { e.stopPropagation(); adminDeletePhoto(photo.id) }}
+                          className="text-[10px] font-bold text-white/80 hover:text-red-300 underline"
+                          title="관리자 삭제">
+                          삭제
+                        </button>
+                      )}
+                      <button
+                        onClick={e => { e.stopPropagation(); openReport(photo.id, 'photo') }}
+                        className="p-1 text-white/60 hover:text-red-300 transition-colors"
+                        title="사진 신고">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -847,13 +877,22 @@ export default function PlaceDetailClient({
                       </div>
                     </div>
                     {c.nickname !== myNickname && (
-                      <button onClick={() => openReport(c.id, 'comment')}
-                        className="shrink-0 p-1.5 text-text-disabled hover:text-red-400 transition-colors"
-                        title="댓글 신고">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
-                        </svg>
-                      </button>
+                      <div className="shrink-0 flex items-center gap-1">
+                        {isAdmin && (
+                          <button onClick={() => adminDeleteComment(c.id)}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 underline"
+                            title="관리자 삭제">
+                            삭제
+                          </button>
+                        )}
+                        <button onClick={() => openReport(c.id, 'comment')}
+                          className="p-1.5 text-text-disabled hover:text-red-400 transition-colors"
+                          title="댓글 신고">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                          </svg>
+                        </button>
+                      </div>
                     )}
                     {myNickname && c.nickname === myNickname && (
                       <button onClick={() => handleDeleteComment(c.id)}
