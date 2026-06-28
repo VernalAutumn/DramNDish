@@ -419,7 +419,7 @@ export default function GlobalPlaceDetail({
 
   const isDistillery = place.type === 'distillery'
   const tourPrograms = attrs.tour_programs as
-    | { name?: string; type?: string; season?: string; price?: number | string; booking_required?: boolean; booking_url?: string; duration?: string }[]
+    | { name?: string; type?: string; season?: string; price?: number | string; booking_required?: boolean; booking_url?: string; duration?: string; includes?: string[] }[]
     | undefined
   const onsiteOfferings = attrs.onsite_offerings as
     | { name?: string; category?: string; note?: string }[]
@@ -688,6 +688,11 @@ export default function GlobalPlaceDetail({
                       {[t.type, t.season, t.duration, t.price != null ? `${t.price}` : null].filter(Boolean).join(' · ') || '상세 정보 없음'}
                       {t.booking_required && ' · 예약 필수'}
                     </p>
+                    {t.includes && t.includes.length > 0 && (
+                      <p className="text-[11px] text-gray-600 mt-1">
+                        <span className="text-gray-400">포함</span> {t.includes.join(' · ')}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
