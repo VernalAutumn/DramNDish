@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createDramndishClient } from '@/src/lib/supabase'
+import { makeGlobalSSRClient } from '@/src/lib/global-server'
+import { createAdminGlobalClient } from '@/src/lib/supabase-admin'
+import { isAdminEmail } from '@/src/lib/admin'
 
 /**
  * GET /api/global/places/[id]
@@ -97,4 +100,66 @@ export async function GET(
     console.error('[api/global/places/[id]] error:', e)
     return NextResponse.json({ error: 'server_error' }, { status: 500 })
   }
+}
+
+/**
+ * PATCH /api/global/places/[id]  (관리자 전용)
+ * body: { official_url?: string|null, attributes?: Record<string, unknown> }
+ *  - official_url 은 컬럼 갱신.
+ *  - attributes 는 기존 값에 "병합"(보낸 키만 덮어씀). 흡연·커버차지는 후기 집계라 폼에서 제외.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const body = await req.json().catch(() => ({}))
+
+  // ── 관리자 인증 (서버 재검증) ──────────────────────────────────────────
+  const ssr = await makeGlobalSSRClient()
+  const {
+    data: { user },
+  } = await ssr.auth.getUser()
+  if (!user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+  if (!isAdminEmail(user.email)) {
+    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
+  }
+
+  let admin
+  try {
+    admin = createAdminGlobalClient()
+  } catch {
+    return NextResponse.json(
+      { error: '서버에 SUPABASE_SERVICE_ROLE_KEY 가 설정되지 않았습니다.' },
+      { status: 503 }
+    )
+  }
+
+  // 기존 attributes 읽어 병합 (보낸 키만 덮어씀)
+  const { data: cur, error: readErr } = await admin
+    .from('places')
+    .select('attributes')
+    .eq('id', id)
+    .single()
+  if (readErr || !cur) {
+    return NextResponse.json({ error: '장소를 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  const patch: Record<string, unknown> = {}
+  if (body.attributes && typeof body.attributes === 'object') {
+    patch.attributes = { ...(cur.attributes as Record<string, unknown>), ...body.attributes }
+  }
+  if (body.official_url !== undefined) {
+    patch.official_url = body.official_url ? String(body.official_url).trim() : null
+  }
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: '변경할 내용이 없습니다.' }, { status: 400 })
+  }
+
+  const { error } = await admin.from('places').update(patch).eq('id', id)
+  if (error) {
+    console.error('[places PATCH]', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ ok: true })
 }

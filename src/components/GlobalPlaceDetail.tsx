@@ -7,6 +7,7 @@ import GlobalReviewForm from './GlobalReviewForm'
 import GlobalPurchaseForm from './GlobalPurchaseForm'
 import GlobalPurchaseTips from './GlobalPurchaseTips'
 import GlobalDistilleryBottles from './GlobalDistilleryBottles'
+import GlobalAdminPlaceEditor from './GlobalAdminPlaceEditor'
 import PhotoLightbox from './PhotoLightbox'
 import PhotoPicker from './PhotoPicker'
 import { uploadGlobalPhotos } from '@/src/lib/global-upload'
@@ -109,6 +110,7 @@ export default function GlobalPlaceDetail({
   const [data, setData] = useState<DetailData | null>(null)
   const [copied, setCopied] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [showAdminEditor, setShowAdminEditor] = useState(false)
 
   // 즐겨찾기
   const [favorited, setFavorited] = useState(false)
@@ -504,6 +506,15 @@ export default function GlobalPlaceDetail({
       </div>
 
       <div className="overflow-y-auto px-5 pb-8 flex-1">
+        {isAdmin && (
+          <button
+            onClick={() => setShowAdminEditor(true)}
+            className="w-full mt-3 py-2 text-xs font-bold rounded-lg text-white"
+            style={{ background: 'var(--color-brand-primary)' }}
+          >
+            ⚙ 관리자 편집 (속성·공식사이트·투어·예약)
+          </button>
+        )}
         {/* 2. 주소 + 신고 */}
         <div className="flex items-start justify-between gap-2 mt-3">
           <p className="text-xs text-gray-600">
@@ -1273,6 +1284,14 @@ export default function GlobalPlaceDetail({
 
       {/* 사진 확대 */}
       {lightbox && <PhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+
+      {showAdminEditor && (
+        <GlobalAdminPlaceEditor
+          place={place}
+          onClose={() => setShowAdminEditor(false)}
+          onDone={() => { setShowAdminEditor(false); load() }}
+        />
+      )}
 
       {/* 후기 작성 모달 */}
       {showReviewForm && currentUser && (
