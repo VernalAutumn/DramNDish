@@ -567,14 +567,14 @@ export default function GlobalExplorer() {
           </div>
           )}
 
-          {/* 패널 푸터: 장소 등록(§8.6) */}
+          {/* 패널 푸터: 장소 추가(§8.6) */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border-default flex-shrink-0 bg-white">
             <button
               onClick={() => router.push('/global/add')}
               className="flex-1 py-2.5 text-xs font-bold rounded-lg text-white"
               style={{ background: 'var(--color-brand-primary)' }}
             >
-              + 장소 등록
+              장소 추가
             </button>
           </div>
         </div>

@@ -2119,7 +2119,7 @@ export default function NaverMap() {
             className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
             style={{ background: '#e5e7eb', color: '#6b7280' }}
           >
-            준비중
+            베타
           </span>
         </button>
       </div>
@@ -2152,7 +2152,7 @@ export default function NaverMap() {
             className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
             style={{ background: '#e5e7eb', color: '#6b7280' }}
           >
-            준비중
+            베타
           </span>
         </button>
       </div>

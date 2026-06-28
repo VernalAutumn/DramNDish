@@ -311,7 +311,7 @@ export default function GlobalMyRecords({
 
             {tab === 'places' &&
               (places.length === 0 ? (
-                <Empty msg="등록한 장소가 없습니다." cta="장소 등록하기" onCta={onAddPlace} />
+                <Empty msg="등록한 장소가 없습니다." cta="장소 추가" onCta={onAddPlace} />
               ) : (
                 <ul className="space-y-2">
                   {places.map((p) => (
