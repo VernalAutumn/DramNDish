@@ -7,6 +7,7 @@ import { track } from '@vercel/analytics/react'
 import SearchFilter, { FilterState, INITIAL_FILTER } from './SearchFilter'
 import DeleteAccountButton from './DeleteAccountButton'
 import { createClient } from '@/src/lib/supabase-browser'
+import { isAdminEmail } from '@/src/lib/admin'
 import type { User } from '@supabase/supabase-js'
 
 declare global {
@@ -1252,6 +1253,21 @@ export default function NaverMap() {
   // 신고: 익명 글(user_id null) + 타인 글(user_id 불일치) — 본인 글만 제외
   const canReport = (itemUserId?: string | null) =>
     !itemUserId || itemUserId !== currentUser?.id
+
+  // ─── 관리자 모더레이션 (작성자가 아니어도 삭제, service-role API) ──────────
+  const isAdmin = isAdminEmail(currentUser?.email)
+  const adminModerateComment = async (commentId: string) => {
+    if (!confirm('[관리자] 이 코멘트를 삭제할까요? 되돌릴 수 없습니다.')) return
+    const res = await fetch(`/api/global/admin/moderate?type=comment&id=${commentId}`, { method: 'DELETE' })
+    if (res.ok) setComments((prev) => prev.filter((c) => c.id !== commentId))
+    else alert('삭제에 실패했습니다.')
+  }
+  const adminModeratePhoto = async (photoId: string) => {
+    if (!confirm('[관리자] 이 사진을 삭제할까요? 되돌릴 수 없습니다.')) return
+    const res = await fetch(`/api/global/admin/moderate?type=photo_kr&id=${photoId}`, { method: 'DELETE' })
+    if (res.ok) setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+    else alert('삭제에 실패했습니다.')
+  }
 
   // ─── 신고 핸들러 ────────────────────────────────────────────────────────
   const handleReport = useCallback(async (
@@ -3311,6 +3327,15 @@ export default function NaverMap() {
                           />
                           <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-between">
                             <p className="text-[11px] text-white truncate">{photo.nickname}</p>
+                            {isAdmin && !canDelete(photo.user_id) && (
+                              <button
+                                onClick={() => adminModeratePhoto(photo.id)}
+                                className="shrink-0 text-[10px] font-bold text-red-300 underline"
+                                title="관리자 삭제"
+                              >
+                                삭제
+                              </button>
+                            )}
                           </div>
                           {/* 삭제 버튼: 본인·익명 → 우상단 */}
                           {deletingPhotoId !== photo.id && canDelete(photo.user_id) && (
@@ -3459,6 +3484,16 @@ export default function NaverMap() {
                                   <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
                                   </svg>
+                                </button>
+                              )}
+                              {/* 관리자 삭제: 타인 글에도 노출 */}
+                              {!c.id.startsWith('__opt__') && deletingCommentId !== c.id && isAdmin && !canDelete(c.user_id) && (
+                                <button
+                                  onClick={() => adminModerateComment(c.id)}
+                                  className="shrink-0 self-start mt-0.5 text-[10px] font-bold text-red-500 hover:text-red-700 underline"
+                                  title="관리자 삭제"
+                                >
+                                  삭제
                                 </button>
                               )}
                             </div>
