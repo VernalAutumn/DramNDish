@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/src/lib/supabase-browser'
 import PhotoLightbox from './PhotoLightbox'
 import DeleteAccountButton from './DeleteAccountButton'
+import RegionToggle from './RegionToggle'
 import {
   GLOBAL_TYPE_LABEL,
   BOTTLE_CONTEXT_LABEL,
@@ -69,12 +70,14 @@ export default function GlobalMyRecords({
   onClose,
   collapsed = false,
   onToggle,
+  showRegionToggle = false,
 }: {
   onPlaceClick?: (id: string) => void
   onAddPlace?: () => void
   onClose?: () => void
   collapsed?: boolean // 데스크탑: 접힌 상태(계정 헤더만)
   onToggle?: () => void
+  showRegionToggle?: boolean // 국내↔해외 전환 토글 노출 (모바일 /global/me 진입점)
 }) {
   const supabase = createClient()
   const [status, setStatus] = useState<Status>('loading')
@@ -231,6 +234,8 @@ export default function GlobalMyRecords({
           </p>
           <p className="text-[11px] text-gray-400">마이페이지</p>
         </div>
+        {/* 마이페이지 내용을 국내/해외 중 무엇으로 볼지 고르는 토글 */}
+        {showRegionToggle && <RegionToggle active="global" />}
         {onToggle ? (
           <button onClick={onToggle} aria-label="접기" className="px-1">
             {chevron(true)}
@@ -421,8 +426,6 @@ export default function GlobalMyRecords({
                   })}
                 </ul>
               ))}
-
-            <p className="text-[11px] text-gray-400 mt-7">리캡 리포트·일정 플래너는 멤버십 기능으로 준비중입니다.</p>
           </div>
         </>
       )}

@@ -147,6 +147,7 @@ export default function GlobalExplorer() {
   // 목록 / 마이페이지 탭. 즐겨찾기는 마이페이지(GlobalMyRecords) 하위탭으로 흡수.
   const [mainTab, setMainTab] = useState<'list' | 'mypage'>('list')
   const [filtersOpen, setFiltersOpen] = useState(true) // 필터 칩 접기/펴기
+  const [countryOpen, setCountryOpen] = useState(false) // 국가 선택 드롭다운 접기/펴기
 
   // 선택한 국가의 장소만 불러온다 (전체 동시 로딩 안 함 → 리소스 절약).
   const load = useCallback(async () => {
@@ -315,8 +316,8 @@ export default function GlobalExplorer() {
         ].join(' ')}
       >
         <div className="w-full h-full flex flex-col overflow-hidden bg-white md:border-r md:border-border-default">
-          {/* 목록 / 마이페이지 탭 */}
-          <div className="flex border-b border-border-default flex-shrink-0">
+          {/* 목록 / 마이페이지 탭 — 모바일은 하단 독바로 대체하므로 숨김 (데스크탑 전용) */}
+          <div className="hidden md:flex border-b border-border-default flex-shrink-0">
             {(
               [
                 { key: 'list', label: '목록' },
@@ -341,38 +342,57 @@ export default function GlobalExplorer() {
           {/* 상단 바: 국가(국기)·검색·유형·속성·도시 필터 (목록 탭 전용) */}
           {mainTab === 'list' && (
           <div className="px-4 pt-3 pb-2 border-b border-border-default flex-shrink-0 space-y-2">
-            {/* 국가 국기 칩 + 검색 */}
-            <div className="flex gap-2">
-              <div className="flex gap-1 flex-shrink-0">
-                {COUNTRIES.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => {
-                      if (c === country) return
-                      setCountry(c)
-                      setSelectedId(null) // 다른 국가로 바꾸면 선택 해제
-                      setMapPlaceId(null) // 지도도 국가 개요로 (이때만 리셋)
-                      resetSubFilters()   // 도시·속성 필터 초기화
-                    }}
-                    title={countryLabel(c)}
-                    aria-pressed={country === c}
-                    className="text-sm px-2 py-1 rounded-lg border leading-none transition-all"
-                    style={
-                      country === c
-                        ? { borderColor: 'var(--color-brand-primary)', background: 'rgba(191,58,33,0.09)' }
-                        : { borderColor: '#e5e7eb', background: '#fff', opacity: 0.55 }
-                    }
-                  >
-                    {COUNTRY_FLAG[c] ?? c}
-                  </button>
-                ))}
-              </div>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="이름·지역·주소 검색"
-                className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-              />
+            {/* 검색 (확대) */}
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="이름·지역·주소 검색"
+              className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5"
+            />
+
+            {/* 국가 선택 — 접었다 펴는 드롭다운 (공간 경제성, 모바일·PC 공통) */}
+            <div className="relative">
+              <button
+                onClick={() => setCountryOpen((v) => !v)}
+                aria-expanded={countryOpen}
+                className="w-full flex items-center justify-between text-xs font-medium border border-gray-200 rounded-lg px-3 py-2"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="text-base leading-none">{COUNTRY_FLAG[country] ?? country}</span>
+                  {countryLabel(country)}
+                </span>
+                <span className="text-gray-400">{countryOpen ? '▴' : '▾'}</span>
+              </button>
+              {countryOpen && (
+                <>
+                  {/* 바깥 클릭 시 닫기 */}
+                  <div className="fixed inset-0 z-10" onClick={() => setCountryOpen(false)} />
+                  <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {COUNTRIES.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => {
+                          setCountryOpen(false)
+                          if (c === country) return
+                          setCountry(c)
+                          setSelectedId(null) // 다른 국가로 바꾸면 선택 해제
+                          setMapPlaceId(null) // 지도도 국가 개요로 (이때만 리셋)
+                          resetSubFilters()   // 도시·속성 필터 초기화
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-gray-50"
+                        style={
+                          c === country
+                            ? { background: 'rgba(191,58,33,0.06)', color: 'var(--color-brand-primary)', fontWeight: 700 }
+                            : { color: '#374151' }
+                        }
+                      >
+                        <span className="text-base leading-none">{COUNTRY_FLAG[c] ?? c}</span>
+                        {countryLabel(c)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 유형 칩 + 세부 필터 접기 토글 (같은 가로축) */}
@@ -487,7 +507,7 @@ export default function GlobalExplorer() {
 
           {/* 목록 본문 — §9 상태별 명시 렌더 */}
           {mainTab === 'list' && (
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+64px)] md:pb-0">
             <>
             {status === 'loading' && (
               <p className="text-sm text-gray-500 py-12 text-center">불러오는 중…</p>
@@ -567,8 +587,8 @@ export default function GlobalExplorer() {
           </div>
           )}
 
-          {/* 패널 푸터: 장소 추가(§8.6) */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border-default flex-shrink-0 bg-white">
+          {/* 패널 푸터: 장소 추가(§8.6) — 모바일은 하단 독바가 대신하므로 숨김 */}
+          <div className="hidden md:flex items-center gap-2 px-3 py-2.5 border-t border-border-default flex-shrink-0 bg-white">
             <button
               onClick={() => router.push('/global/add')}
               className="flex-1 py-2.5 text-xs font-bold rounded-lg text-white"
@@ -587,7 +607,7 @@ export default function GlobalExplorer() {
       {selected && (
         <div
           className={[
-            'absolute z-40 bg-white overflow-hidden',
+            'absolute z-[60] md:z-40 bg-white overflow-hidden',
             'inset-x-0 top-[calc(env(safe-area-inset-top)+48px)] bottom-0',
             'md:inset-x-auto md:right-auto md:left-[calc(380px+0.75rem)] md:top-4 md:bottom-4 md:w-[400px]',
             'md:rounded-2xl md:shadow-xl md:border md:border-border-default',

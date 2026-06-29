@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/src/lib/supabase-browser'
 import DeleteAccountButton from '@/src/components/DeleteAccountButton'
+import RegionToggle from '@/src/components/RegionToggle'
 import type { User } from '@supabase/supabase-js'
 
 const BRAND = '#BF3A21'
@@ -234,8 +235,9 @@ export default function ProfilePage() {
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* 헤더 */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-100">
+      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between gap-2">
         <h1 className="text-base font-bold text-gray-900">마이페이지</h1>
+        <RegionToggle active="domestic" />
       </div>
 
       <div className="flex-1 overflow-y-auto">
