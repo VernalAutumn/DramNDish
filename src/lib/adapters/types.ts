@@ -17,6 +17,8 @@ export interface IPlaceStandard {
   name: string
   /** 전체 주소 → 폼의 address */
   address: string | null
+  /** 주소에서 추출한 도시(locality 등) → 폼의 region 프리필. 없으면 null. 사용자가 수정 가능 */
+  city: string | null
   /** 위도 → places.lat */
   lat: number | null
   /** 경도 → places.lng */

@@ -31,11 +31,30 @@ const DETAILS_FIELD_MASK = [
   'id',
   'displayName',
   'formattedAddress',
+  'addressComponents', // 도시 자동추출용 (locality 등) — 등록 폼 region 프리필
   'location',
   'googleMapsUri',
   'primaryType',
   'websiteUri', // 공식 사이트 자동채움 (Enterprise SKU — 등록 시 1회만 호출)
 ].join(',')
+
+// 주소 컴포넌트에서 "도시"로 쓸 후보를 우선순위대로 고른다.
+//   locality(대부분 도시) → postal_town(영국 타운) → admin_area_2(군/시) → sublocality(구).
+const CITY_TYPE_PRIORITY = [
+  'locality',
+  'postal_town',
+  'administrative_area_level_2',
+  'sublocality_level_1',
+  'sublocality',
+]
+interface AddressComponent { longText?: string; shortText?: string; types?: string[] }
+function extractCity(components: AddressComponent[]): string | null {
+  for (const t of CITY_TYPE_PRIORITY) {
+    const c = components.find((comp) => comp.types?.includes(t))
+    if (c) return (c.longText ?? c.shortText ?? '').trim() || null
+  }
+  return null
+}
 
 // ── Autocomplete 응답에서 쓰는 부분만 추린 타입 ──
 interface AcResponse {
@@ -55,6 +74,7 @@ interface DetailsResponse {
   id?: string
   displayName?: { text?: string }
   formattedAddress?: string
+  addressComponents?: AddressComponent[]
   location?: { latitude?: number; longitude?: number }
   googleMapsUri?: string
   primaryType?: string
@@ -144,10 +164,34 @@ export async function getGooglePlaceDetails(
     providerId: p.id ?? placeId,
     name: p.displayName?.text ?? '',
     address: p.formattedAddress ?? null,
+    city: extractCity(p.addressComponents ?? []),
     lat: p.location?.latitude ?? null,
     lng: p.location?.longitude ?? null,
     googleMapsUrl: p.googleMapsUri ?? null,
     primaryType: p.primaryType ?? null,
     officialUrl: p.websiteUri ?? null,
+  }
+}
+
+/**
+ * 영어 도시명만 따로 조회한다 (best-effort).
+ * 상세(getGooglePlaceDetails)는 "현지어 원문" 이름을 받으려 현지 언어로 호출하므로 도시도 현지어가 된다.
+ * region(도시) 프리필은 영어가 더 보편적이라, addressComponents만 영어로 한 번 더 받아 도시를 뽑는다.
+ * 실패하면 null (호출부는 현지어 도시로 폴백). 등록 시 1회만 호출되는 경로다.
+ */
+export async function getGooglePlaceCityEn(placeId: string): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY
+  if (!apiKey) return null
+  try {
+    const url = new URL(DETAILS_BASE_URL + encodeURIComponent(placeId))
+    url.searchParams.set('languageCode', 'en')
+    const res = await fetch(url, {
+      headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'addressComponents' },
+    })
+    if (!res.ok) return null
+    const p = (await res.json()) as DetailsResponse
+    return extractCity(p.addressComponents ?? [])
+  } catch {
+    return null
   }
 }

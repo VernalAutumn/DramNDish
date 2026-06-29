@@ -144,6 +144,9 @@ export default function GlobalAddPage() {
         setMapsUrl(p.googleMapsUrl ?? '')
         setOfficialUrl(p.officialUrl ?? '') // 구글 공식 사이트 자동채움
         setCoords({ lat: p.lat ?? null, lng: p.lng ?? null })
+        // 도시 자동채움 (전 국가). 사전에 있는 지명은 한국어, 없으면 영어로 들어온다.
+        // UK도 런던·아일라·캠벨타운 같은 지명은 적절 — 위스키 지역(하이랜드 등)만 수동.
+        if (p.city) setRegion(p.city)
         setPicked(true)
       }
     } catch {
@@ -405,9 +408,12 @@ export default function GlobalAddPage() {
               <input
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
-                placeholder={country === 'UK' ? '지역 (위스키 지역 — 스페이사이드·아일라 등)' : '지역 (도시 — 교토·타이베이 등)'}
+                placeholder={country === 'UK' ? '지역 (도시·위스키 지역 — 런던·아일라·스페이사이드 등)' : '지역 (도시 — 교토·타이베이 등)'}
                 className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2"
               />
+              {picked && region && (
+                <p className="text-[11px] text-gray-400">도시는 주소에서 자동으로 채웠어요 — 필요하면 수정하세요.</p>
+              )}
               <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="주소 (선택)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
               <input value={mapsUrl} onChange={(e) => setMapsUrl(e.target.value)} placeholder="구글 지도 링크 (선택)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />
               <input value={officialUrl} onChange={(e) => setOfficialUrl(e.target.value)} placeholder="공식 사이트 (선택 — SNS 제외)" className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2" />

@@ -14,6 +14,10 @@ const TOGGLES_BY_TYPE: Record<string, [string, string][]> = {
   restaurant: [['booking_required', '예약 필수']],
 }
 
+const TYPE_LABELS: [string, string][] = [
+  ['liquor_shop', '리쿼샵'], ['bar', '바'], ['restaurant', '음식점'], ['distillery', '증류소'],
+]
+
 interface TourRow { name: string; price: string; booking_required: boolean; includes: string }
 interface OfferRow { name: string; category: string; note: string }
 
@@ -29,14 +33,21 @@ export default function GlobalAdminPlaceEditor({
   onDone: () => void
 }) {
   const attrs = (place.attributes ?? {}) as Record<string, unknown>
-  const toggleDefs = TOGGLES_BY_TYPE[place.type] ?? []
-  const isDistillery = place.type === 'distillery'
+
+  const [selType, setSelType] = useState<string>(place.type)
+  const toggleDefs = TOGGLES_BY_TYPE[selType] ?? []
+  const isDistillery = selType === 'distillery'
 
   const [officialUrl, setOfficialUrl] = useState(place.official_url ?? '')
   const [exclusiveMd, setExclusiveMd] = useState((attrs.exclusive_md as string) ?? '')
   const [bools, setBools] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(toggleDefs.map(([k]) => [k, attrs[k] === true]))
+    Object.fromEntries((TOGGLES_BY_TYPE[place.type] ?? []).map(([k]) => [k, attrs[k] === true]))
   )
+  // 유형 변경 시 그 유형의 토글 셋으로 교체 (기존 attributes 값은 보존)
+  const changeType = (t: string) => {
+    setSelType(t)
+    setBools(Object.fromEntries((TOGGLES_BY_TYPE[t] ?? []).map(([k]) => [k, attrs[k] === true])))
+  }
   const [tours, setTours] = useState<TourRow[]>(() =>
     ((attrs.tour_programs as { name?: string; price?: string | number; booking_required?: boolean; includes?: string[] }[]) ?? []).map((t) => ({
       name: t.name ?? '',
@@ -83,7 +94,7 @@ export default function GlobalAdminPlaceEditor({
       const res = await fetch(`/api/global/places/${place.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ official_url: officialUrl.trim() || null, attributes }),
+        body: JSON.stringify({ official_url: officialUrl.trim() || null, attributes, type: selType }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || '저장 실패')
@@ -106,6 +117,23 @@ export default function GlobalAdminPlaceEditor({
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-4">
+          {/* 유형 */}
+          <div>
+            <p className="text-xs font-bold text-gray-700 mb-1.5">유형</p>
+            <div className="flex flex-wrap gap-1.5">
+              {TYPE_LABELS.map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => changeType(key)}
+                  className="text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors"
+                  style={selType === key ? { background: BRAND, borderColor: BRAND, color: '#fff' } : { borderColor: '#e5e7eb', color: '#6b7280' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 토글 */}
           {toggleDefs.length > 0 && (
             <div>

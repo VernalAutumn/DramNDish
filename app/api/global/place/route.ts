@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getGooglePlaceDetails, localeForCountry } from '@/src/lib/adapters/google-places'
+import { getGooglePlaceDetails, getGooglePlaceCityEn, localeForCountry } from '@/src/lib/adapters/google-places'
+import { toKoreanCity } from '@/src/lib/city-ko'
 
 /**
  * GET /api/global/place?placeId=ChIJ...&country=JP&token=<세션토큰>
@@ -19,7 +20,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const place = await getGooglePlaceDetails(placeId, token, localeForCountry(country))
+    // 현지어 상세(이름 원문 등) + 영어 도시를 병렬 조회. 영어 도시가 있으면 region 프리필용으로 덮어쓴다.
+    const [place, cityEn] = await Promise.all([
+      getGooglePlaceDetails(placeId, token, localeForCountry(country)),
+      getGooglePlaceCityEn(placeId),
+    ])
+    // 영어 도시를 사전에 있는 경우 한국어로 통일(런던·아일라 등). 없으면 영어 유지.
+    if (cityEn) place.city = toKoreanCity(cityEn)
     return NextResponse.json({ place })
   } catch (e) {
     console.error('[api/global/place]', e)

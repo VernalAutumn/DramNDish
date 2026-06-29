@@ -105,11 +105,14 @@ export async function GET(
   }
 }
 
+const PLACE_TYPES = ['liquor_shop', 'bar', 'restaurant', 'distillery'] as const
+
 /**
  * PATCH /api/global/places/[id]  (관리자 전용)
- * body: { official_url?: string|null, attributes?: Record<string, unknown> }
+ * body: { official_url?: string|null, attributes?: Record<string, unknown>, type?: string }
  *  - official_url 은 컬럼 갱신.
  *  - attributes 는 기존 값에 "병합"(보낸 키만 덮어씀). 흡연·커버차지는 후기 집계라 폼에서 제외.
+ *  - type 은 유형 변경. distillery가 아니게 바꾸면 subkind를 비운다(제약: subkind는 distillery 전용).
  */
 export async function PATCH(
   req: NextRequest,
@@ -154,6 +157,14 @@ export async function PATCH(
   }
   if (body.official_url !== undefined) {
     patch.official_url = body.official_url ? String(body.official_url).trim() : null
+  }
+  if (body.type !== undefined) {
+    if (!PLACE_TYPES.includes(body.type)) {
+      return NextResponse.json({ error: '유형 값이 올바르지 않습니다.' }, { status: 400 })
+    }
+    patch.type = body.type
+    // subkind는 distillery 전용 제약 — 다른 유형으로 바꾸면 비운다.
+    if (body.type !== 'distillery') patch.subkind = null
   }
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: '변경할 내용이 없습니다.' }, { status: 400 })
