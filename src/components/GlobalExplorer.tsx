@@ -342,32 +342,32 @@ export default function GlobalExplorer() {
           {/* 상단 바: 국가(국기)·검색·유형·속성·도시 필터 (목록 탭 전용) */}
           {mainTab === 'list' && (
           <div className="px-4 pt-3 pb-2 border-b border-border-default flex-shrink-0 space-y-2">
-            {/* 검색 (확대) */}
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="이름·지역·주소 검색"
-              className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5"
-            />
-
-            {/* 국가 선택 — 접었다 펴는 드롭다운 (공간 경제성, 모바일·PC 공통) */}
+            {/* 검색바 — 좌측에 국가(국기) 압축 선택 + 검색어 (카테고리 선택형) */}
             <div className="relative">
-              <button
-                onClick={() => setCountryOpen((v) => !v)}
-                aria-expanded={countryOpen}
-                className="w-full flex items-center justify-between text-xs font-medium border border-gray-200 rounded-lg px-3 py-2"
-              >
-                <span className="flex items-center gap-1.5">
+              <div className="flex items-stretch w-full border border-gray-200 rounded-xl bg-white overflow-hidden focus-within:border-gray-400 transition-colors">
+                {/* 국가 선택 (좌측 압축) */}
+                <button
+                  onClick={() => setCountryOpen((v) => !v)}
+                  aria-expanded={countryOpen}
+                  aria-label="국가 선택"
+                  className="flex items-center gap-1 pl-3 pr-2.5 border-r border-gray-200 text-sm flex-shrink-0 hover:bg-gray-50 transition-colors"
+                >
                   <span className="text-base leading-none">{COUNTRY_FLAG[country] ?? country}</span>
-                  {countryLabel(country)}
-                </span>
-                <span className="text-gray-400">{countryOpen ? '▴' : '▾'}</span>
-              </button>
+                  <span className="text-[10px] text-gray-400 leading-none">{countryOpen ? '▴' : '▾'}</span>
+                </button>
+                {/* 검색어 */}
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="이름·지역·주소 검색"
+                  className="flex-1 min-w-0 text-sm px-3 py-2.5 outline-none bg-transparent"
+                />
+              </div>
               {countryOpen && (
                 <>
                   {/* 바깥 클릭 시 닫기 */}
                   <div className="fixed inset-0 z-10" onClick={() => setCountryOpen(false)} />
-                  <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  <div className="absolute left-0 top-full mt-1 z-20 min-w-[10rem] bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
                     {COUNTRIES.map((c) => (
                       <button
                         key={c}

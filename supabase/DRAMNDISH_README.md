@@ -37,6 +37,9 @@ Supabase SQL Editor에서 순서대로 실행:
 8. `migrations/20260613_0006_photos.sql` — 사진 테이블(설명 포함) + RLS·GRANT
 9. `migrations/20260613_0007_verification_window_14d.sql` — 관찰 검증 기간 14일
 10. `migrations/20260613_0008_tags.sql` — 장소 태그(place_tags·tag_votes, 1인 1표) + RLS·GRANT
+11. `migrations/20260629_0015_observations_auto_purge.sql` — 관찰 30일 자동 삭제(pg_cron)
+    - ⚠ pg_cron 확장 필요(대시보드 Database → Extensions). 미적용이어도 앱은 30일 컷오프로
+      오래된 관찰을 숨기므로, cron 은 저장소 정리용.
 
 시드 재실행 시(`seed/dramndish_seed.sql`)는 멱등 — `source='seed'` 행을 먼저
 비우므로 중복 등록이 정리된다.

@@ -47,10 +47,13 @@ export async function getGlobalUser(client: GlobalSSRClient): Promise<User | nul
     user.email?.split('@')[0] ||
     '익명'
 
-  // 첫 생성만 (ignoreDuplicates) — 닉네임 변경은 별도 경로. RLS users_insert_self 통과.
+  // 프로필 행 보장 + 닉네임 동기화.
+  // 해외판은 contributor/user 표시를 global.users.nickname 라이브 조인으로 하므로,
+  // 국내판에서 닉네임을 바꾼 사용자라도 해외 활동 시 최신 app_nickname으로 자가 치유된다.
+  // (insert=users_insert_self / update=users_update_self RLS 통과)
   await client
     .from('users')
-    .upsert({ id: user.id, nickname }, { onConflict: 'id', ignoreDuplicates: true })
+    .upsert({ id: user.id, nickname }, { onConflict: 'id' })
 
   return user
 }

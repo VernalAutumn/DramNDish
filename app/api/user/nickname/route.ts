@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { makeGlobalSSRClient } from '@/src/lib/global-server'
 
 async function makeSSRClient() {
   const cookieStore = await cookies()
@@ -83,6 +84,23 @@ export async function PATCH(req: NextRequest) {
 
   if (placeErr) {
     console.warn('[nickname PATCH] places cascade warn:', placeErr.message)
+  }
+
+  // ── 5. 해외(global.users) 닉네임 동기화 ────────────────────────────────
+  //   해외판은 기여자/작성자 표시를 global.users.nickname 라이브 조인으로 하므로,
+  //   이 한 줄이면 해외 전 영역(장소·리뷰·바틀·사진)의 닉네임이 즉시 갱신된다.
+  //   (국내판은 비정규화 텍스트라 위처럼 테이블별 캐스케이드가 필요하지만, 해외는 정규화)
+  try {
+    const globalClient = await makeGlobalSSRClient()
+    const { error: gUserErr } = await globalClient
+      .from('users')
+      .update({ nickname: raw })
+      .eq('id', user.id)
+    if (gUserErr) {
+      console.warn('[nickname PATCH] global.users cascade warn:', gUserErr.message)
+    }
+  } catch (e) {
+    console.warn('[nickname PATCH] global.users cascade skipped:', e)
   }
 
   return NextResponse.json({ nickname: raw })

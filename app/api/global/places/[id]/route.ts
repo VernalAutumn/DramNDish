@@ -43,6 +43,9 @@ export async function GET(
           'id, user_id, obs_type, value_bucket, value_text, note, observed_at, verification_status'
         )
         .eq('place_id', id)
+        // 관찰은 휘발성 — 관찰일 기준 30일 경과분은 노출하지 않는다.
+        // (pg_cron 일일 삭제와 별개로, cron 지연/미적용이어도 컷오프 보장. 0015 마이그레이션)
+        .gte('observed_at', new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10))
         .order('observed_at', { ascending: false }),
       supabase
         .from('photos')
